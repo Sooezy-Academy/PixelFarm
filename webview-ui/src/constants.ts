@@ -196,6 +196,14 @@ export const WHATS_NEW_FADE_MS = 1000;
 export const MAX_DELTA_TIME_SEC = 0.1;
 export const WAITING_BUBBLE_DURATION_SEC = 2.0;
 export const DISMISS_BUBBLE_FAST_FADE_SEC = 0.3;
+/** Theme product drops (an egg in the hen house when a turn ends). */
+export const PRODUCT_DROP_DURATION_SEC = 3.0;
+/** Sideways offset from the character, so the product lands beside it, not under it. */
+export const PRODUCT_DROP_OFFSET_X_PX = 10;
+/** How far the product rises over its lifetime (sprite pixels). */
+export const PRODUCT_DROP_RISE_PX = 6;
+/** Oldest drops are discarded beyond this many on screen. */
+export const MAX_PRODUCT_DROPS = 24;
 export const INACTIVE_SEAT_TIMER_MIN_SEC = 3.0;
 export const INACTIVE_SEAT_TIMER_RANGE_SEC = 2.0;
 /** Default/fallback palette count (bundled characters). Actual count comes from getLoadedCharacterCount(). */

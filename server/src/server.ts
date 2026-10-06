@@ -10,6 +10,7 @@ import type {
   AssetCache,
   ReloadAssetsSideEffect,
   SetHooksEnabledSideEffect,
+  SetThemeSideEffect,
 } from './clientMessageHandler.js';
 import {
   SERVER_JSON_DIR,
@@ -18,6 +19,7 @@ import {
   SERVERS_DIR,
 } from './constants.js';
 import { createHttpServer } from './httpServer.js';
+import type { ProduceInventory } from './produceInventory.js';
 import type { ServerConfig } from './serverConfig.js';
 import { isServerConfig, isServerTarget } from './serverConfig.js';
 
@@ -69,6 +71,8 @@ export class PixelAgentsServer {
     assetCache?: AssetCache;
     onSetHooksEnabled?: SetHooksEnabledSideEffect;
     onReloadAssets?: ReloadAssetsSideEffect;
+    onSetTheme?: SetThemeSideEffect;
+    inventory?: ProduceInventory;
   }): Promise<ServerConfig> {
     const embedded = options?.embedded ?? true;
     const wantsSpa = !embedded;
@@ -106,6 +110,8 @@ export class PixelAgentsServer {
       onHookEvent: (providerId, event) => this.callback?.(providerId, event),
       onSetHooksEnabled: options?.onSetHooksEnabled,
       onReloadAssets: options?.onReloadAssets,
+      onSetTheme: options?.onSetTheme,
+      inventory: options?.inventory,
     });
 
     this.app = app;

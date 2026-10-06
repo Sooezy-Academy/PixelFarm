@@ -11,8 +11,10 @@ import {
   setHooksEnabled,
   writeConfig,
 } from './configPersistence.js';
-import { HUE_SHIFT_MAX_DEG, PALETTE_COUNT } from './constants.js';
+import { DEFAULT_THEME, HUE_SHIFT_MAX_DEG, PALETTE_COUNT } from './constants.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
+import type { ProduceInventory } from './produceInventory.js';
+import { readInventory } from './produceInventory.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
@@ -33,6 +35,21 @@ export type SetHooksEnabledSideEffect = (
  */
 export type ReloadAssetsSideEffect = (send: WsSend) => Promise<void> | void;
 
+/**
+ * Switch the visual theme: persist it, rebuild the asset cache for it, point
+ * layout I/O at its layout file, and re-send theme + assets + layout to EVERY
+ * client (a tab left on the old theme would save its layout into the new
+ * theme's file). Provided by cli.ts, which owns the dist root.
+ */
+export type SetThemeSideEffect = (theme: string) => Promise<void> | void;
+
+/** The active theme as the webview needs it (`themeLoaded`). */
+export interface ThemeState {
+  theme: string;
+  themes: string[];
+  productsByArea: Record<string, string>;
+}
+
 /** Cached assets loaded at server startup. Sent to each WebSocket client on webviewReady. */
 export interface AssetCache {
   characters: LoadedCharacterSprites | null;
@@ -42,6 +59,8 @@ export interface AssetCache {
   carpetTiles: string[][][][] | null;
   furniture: LoadedAssets | null;
   defaultLayout: Record<string, unknown> | null;
+  /** Active theme. Absent = the default theme with no products (pre-theme callers). */
+  theme?: ThemeState;
 }
 
 export interface ClientMessageContext {
@@ -52,6 +71,10 @@ export interface ClientMessageContext {
   onSetHooksEnabled?: SetHooksEnabledSideEffect;
   /** Reload assets after an external-asset-directory change. Needs the dist root, known only to cli.ts. */
   onReloadAssets?: ReloadAssetsSideEffect;
+  /** Switch the visual theme. Needs the dist root, known only to cli.ts. */
+  onSetTheme?: SetThemeSideEffect;
+  /** Produce tally; absent = collectProduct is ignored. */
+  inventory?: ProduceInventory;
   /**
    * Whether this client may send messages that reach OUTSIDE `~/.pixel-agents/`
    * — today only `setHooksEnabled`, which grants machine-wide consent to modify
@@ -270,6 +293,23 @@ export function handleClientMessage(
       break;
     }
 
+    case 'setTheme':
+      if (typeof msg.theme === 'string') {
+        void ctx.onSetTheme?.(msg.theme);
+      }
+      break;
+
+    case 'collectProduct': {
+      const counts = ctx.inventory?.collect(
+        msg.id,
+        msg.product,
+        Object.values(cache?.theme?.productsByArea ?? {}),
+      );
+      // Every client shows the same tally.
+      if (counts) store.broadcast({ type: 'inventoryLoaded', counts });
+      break;
+    }
+
     default:
       // focusAgent, exportLayout, importLayout
       // require IDE-specific handling (not yet implemented for standalone)
@@ -368,32 +408,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
 
   // 2. Assets (from server cache, loaded at startup via pngjs)
   if (cache) {
-    if (cache.characters) {
-      send({ type: 'characterSpritesLoaded', characters: cache.characters.characters });
-    }
-    if (cache.pets) {
-      send({
-        type: 'petSpritesLoaded',
-        pets: cache.pets.pets,
-        petNames: cache.pets.manifests.map((m) => m.name),
-      });
-    }
-    if (cache.floorTiles) {
-      send({ type: 'floorTilesLoaded', sprites: cache.floorTiles });
-    }
-    if (cache.wallTiles) {
-      send({ type: 'wallTilesLoaded', sets: cache.wallTiles });
-    }
-    if (cache.carpetTiles) {
-      send({ type: 'carpetTilesLoaded', sets: cache.carpetTiles });
-    }
-    if (cache.furniture) {
-      send({
-        type: 'furnitureAssetsLoaded',
-        catalog: cache.furniture.catalog,
-        sprites: Object.fromEntries(cache.furniture.sprites),
-      });
-    }
+    for (const message of assetMessages(cache)) send(message);
   }
 
   // 3. Layout is sent AFTER existingAgents — see step 7 below. The webview
@@ -460,6 +475,11 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
       });
   }
 
+  // 4b-pre. Active theme (before layoutLoaded, so the product map is in place
+  // when characters appear).
+  send(themeLoadedMessage(cache));
+  send({ type: 'inventoryLoaded', counts: readInventory() });
+
   // 4b. Folder→Area mappings (must arrive before existingAgents so the
   // webview seat-preference logic has the dict when characters are created).
   send({
@@ -515,4 +535,58 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // exist once the layout flush creates them. Without this a reconnecting
   // client shows bare characters until each agent takes another turn.
   resendAgentActivity(send, store);
+}
+
+/** The asset broadcasts for a cache, in the webview's load order (sprites before layout). */
+export function assetMessages(cache: AssetCache): Array<Record<string, unknown>> {
+  const messages: Array<Record<string, unknown>> = [];
+  if (cache.characters) {
+    messages.push({ type: 'characterSpritesLoaded', characters: cache.characters.characters });
+  }
+  if (cache.pets) {
+    messages.push({
+      type: 'petSpritesLoaded',
+      pets: cache.pets.pets,
+      petNames: cache.pets.manifests.map((m) => m.name),
+    });
+  }
+  if (cache.floorTiles) {
+    messages.push({ type: 'floorTilesLoaded', sprites: cache.floorTiles });
+  }
+  if (cache.wallTiles) {
+    messages.push({ type: 'wallTilesLoaded', sets: cache.wallTiles });
+  }
+  if (cache.carpetTiles) {
+    messages.push({ type: 'carpetTilesLoaded', sets: cache.carpetTiles });
+  }
+  if (cache.furniture) {
+    messages.push({
+      type: 'furnitureAssetsLoaded',
+      catalog: cache.furniture.catalog,
+      sprites: Object.fromEntries(cache.furniture.sprites),
+    });
+  }
+  return messages;
+}
+
+export function themeLoadedMessage(cache: AssetCache | null): Record<string, unknown> {
+  const theme = cache?.theme ?? {
+    theme: DEFAULT_THEME,
+    themes: [DEFAULT_THEME],
+    productsByArea: {},
+  };
+  return { type: 'themeLoaded', ...theme };
+}
+
+/**
+ * Everything a client needs to redraw after a theme switch: the theme, its
+ * assets, then its layout (read from the theme's own layout file, falling
+ * back to the theme's bundled default).
+ */
+export function themeSwitchMessages(cache: AssetCache): Array<Record<string, unknown>> {
+  return [
+    themeLoadedMessage(cache),
+    ...assetMessages(cache),
+    { type: 'layoutLoaded', layout: readLayoutFromFile() ?? cache.defaultLayout ?? null },
+  ];
 }

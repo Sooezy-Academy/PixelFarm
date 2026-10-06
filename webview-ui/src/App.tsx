@@ -7,6 +7,7 @@ import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
+import { InventoryPanel } from './components/InventoryPanel.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { Tooltip } from './components/Tooltip.js';
@@ -96,6 +97,10 @@ function App() {
     setAreaMappings,
     showAreas,
     setShowAreas,
+    theme,
+    themes,
+    themeProducts,
+    inventory,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Show migration notice once layout reset is detected
@@ -512,6 +517,10 @@ function App() {
       </Modal>
 
       <BottomToolbar
+        // The Layout editor's toolbar takes this corner while editing.
+        above={
+          editor.isEditMode ? null : <InventoryPanel products={themeProducts} counts={inventory} />
+        }
         isEditMode={editor.isEditMode}
         onOpenClaude={editor.handleOpenClaude}
         onToggleEditMode={editor.handleToggleEditMode}
@@ -573,6 +582,9 @@ function App() {
         showAreasAvailable={areasAvailable}
         onExportLayout={handleExportLayout}
         onImportLayout={handleImportLayout}
+        theme={theme}
+        themes={themes}
+        themeSwitchBlocked={editor.isEditMode}
       />
 
       {showMigrationNotice && (

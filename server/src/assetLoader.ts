@@ -310,17 +310,6 @@ export async function loadWallTiles(assetsRoot: string): Promise<LoadedWallTiles
   }
 }
 
-/**
- * Send wall tiles to webview
- */
-export function sendWallTilesToWebview(webview: vscode.Webview, wallTiles: LoadedWallTiles): void {
-  webview.postMessage({
-    type: 'wallTilesLoaded',
-    sets: wallTiles.sets,
-  });
-  console.log(`📤 Sent ${wallTiles.sets.length} wall tile set(s) to webview`);
-}
-
 // ── Carpet tile loading ─────────────────────────────────────
 
 export interface LoadedCarpetTiles {
@@ -383,21 +372,6 @@ export async function loadCarpetTiles(assetsRoot: string): Promise<LoadedCarpetT
   }
 }
 
-/**
- * Send carpet tiles to webview (VS Code adapter convenience). The standalone
- * WebSocket path sends from clientMessageHandler.ts using AssetCache.carpetTiles.
- */
-export function sendCarpetTilesToWebview(
-  webview: vscode.Webview,
-  carpetTiles: LoadedCarpetTiles,
-): void {
-  webview.postMessage({
-    type: 'carpetTilesLoaded',
-    sets: carpetTiles.sets,
-  });
-  console.log(`📤 Sent ${carpetTiles.sets.length} carpet tile variant(s) to webview`);
-}
-
 interface LoadedFloorTiles {
   sprites: string[][][]; // N sprites (one per floor_N.png), each 16x16 SpriteData
 }
@@ -450,20 +424,6 @@ export async function loadFloorTiles(assetsRoot: string): Promise<LoadedFloorTil
     );
     return null;
   }
-}
-
-/**
- * Send floor tiles to webview
- */
-export function sendFloorTilesToWebview(
-  webview: vscode.Webview,
-  floorTiles: LoadedFloorTiles,
-): void {
-  webview.postMessage({
-    type: 'floorTilesLoaded',
-    sprites: floorTiles.sprites,
-  });
-  console.log(`📤 Sent ${floorTiles.sprites.length} floor tile patterns to webview`);
 }
 
 // ── Character sprite loading ────────────────────────────────

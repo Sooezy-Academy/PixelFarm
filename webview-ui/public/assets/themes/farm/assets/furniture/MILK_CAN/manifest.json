@@ -1,0 +1,13 @@
+{
+  "id": "MILK_CAN",
+  "name": "Milk Can",
+  "category": "storage",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": true,
+  "backgroundTiles": 0,
+  "width": 16,
+  "height": 16,
+  "footprintW": 1,
+  "footprintH": 1
+}

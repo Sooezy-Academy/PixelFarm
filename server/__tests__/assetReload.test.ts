@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the asset loaders so we can assert WHICH loader runs for root vs external
@@ -111,5 +114,67 @@ describe('assetReload helpers', () => {
     expect(cache.furniture?.catalog).toEqual([{ id: 'furn:dist' }, { id: 'furn:ext' }]);
     // Floor/wall/carpet are bundled-only: loaded from dist, never from the external dir.
     expect(vi.mocked(assetLoader.loadFloorTiles).mock.calls.map((c) => c[0])).toEqual(['dist']);
+  });
+});
+
+describe('buildAssetCache with a theme pack', () => {
+  /** A dist root with `assets/themes/farm/` holding the given asset subdirectories. */
+  function distWithFarm(subdirs: string[]): { dist: string; farm: string } {
+    const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-theme-cache-'));
+    const farm = path.join(dist, 'assets', 'themes', 'farm');
+    for (const sub of ['', ...subdirs]) {
+      fs.mkdirSync(path.join(farm, 'assets', sub), { recursive: true });
+    }
+    fs.writeFileSync(
+      path.join(farm, 'theme.json'),
+      JSON.stringify({ productsByArea: { 'Hen house': 'EGG_BASKET' } }),
+    );
+    return { dist, farm };
+  }
+
+  it('layers the pack: characters and provided floors/layout replace, pets and furniture join', async () => {
+    const { dist, farm } = distWithFarm(['floors']);
+    try {
+      const cache = await buildAssetCache(dist, ['ext'], 'farm');
+
+      // Characters: the pack's set replaces the bundled one; externals still add on top.
+      expect(cache.characters?.characters).toEqual([`char-ext:${farm}`, 'char-ext:ext']);
+      expect(vi.mocked(assetLoader.loadCharacterSprites)).not.toHaveBeenCalled();
+      // Pets and furniture: bundled first, then the pack, then externals.
+      expect(cache.pets?.pets).toEqual([`pet-root:${dist}`, `pet-ext:${farm}`, 'pet-ext:ext']);
+      expect(cache.furniture?.catalog).toEqual([
+        { id: `furn:${dist}` },
+        { id: `furn:${farm}` },
+        { id: 'furn:ext' },
+      ]);
+      // Floors come from the pack (it has floors/); walls fall back to the bundled set.
+      expect(cache.floorTiles).toEqual([[`floor:${farm}`]]);
+      expect(cache.wallTiles).toEqual([[`wall:${dist}`]]);
+      expect(cache.defaultLayout).toEqual({ version: 1, marker: farm });
+      expect(cache.theme).toEqual({
+        theme: 'farm',
+        themes: ['office', 'farm'],
+        productsByArea: { 'Hen house': 'EGG_BASKET' },
+      });
+    } finally {
+      fs.rmSync(dist, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to the bundled assets and the default theme for an unknown theme id', async () => {
+    const { dist } = distWithFarm([]);
+    try {
+      const cache = await buildAssetCache(dist, [], 'castle');
+
+      expect(cache.characters?.characters).toEqual([`char-root:${dist}`]);
+      expect(cache.defaultLayout).toEqual({ version: 1, marker: dist });
+      expect(cache.theme).toEqual({
+        theme: 'office',
+        themes: ['office', 'farm'],
+        productsByArea: {},
+      });
+    } finally {
+      fs.rmSync(dist, { recursive: true, force: true });
+    }
   });
 });

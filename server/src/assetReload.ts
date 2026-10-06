@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
 import {
   loadCarpetTiles,
@@ -14,7 +17,9 @@ import {
   mergePetSprites,
 } from './assetLoader.js';
 import type { AssetCache } from './clientMessageHandler.js';
+import { DEFAULT_THEME } from './constants.js';
 import { setPaletteCount } from './paletteAssigner.js';
+import { listThemes, loadThemeManifest, themeRoot } from './theme.js';
 
 /**
  * Shared asset-loading helpers used by BOTH the VS Code adapter and the
@@ -44,8 +49,13 @@ export async function loadAllFurniture(
 export async function loadAllCharacters(
   assetsRoot: string,
   externalDirs: string[],
+  themeDir: string | null = null,
 ): Promise<LoadedCharacterSprites | null> {
-  let chars = await loadCharacterSprites(assetsRoot);
+  // A theme's characters REPLACE the bundled set (farmers instead of office
+  // workers) rather than joining it; external directories still add on top.
+  let chars =
+    (themeDir ? await loadExternalCharacterSprites(themeDir) : null) ??
+    (await loadCharacterSprites(assetsRoot));
   for (const extraDir of externalDirs) {
     const extra = await loadExternalCharacterSprites(extraDir);
     if (extra) {
@@ -81,18 +91,33 @@ export async function loadAllPets(
  * tiles are bundled-only. Reproduces the wrap/unwrap shape `AssetCache` expects:
  * characters/pets/furniture are wrapper objects, while floor/wall/carpet are the
  * unwrapped sprite arrays.
+ *
+ * A non-default `theme` layers its pack (`<dist>/assets/themes/<theme>/`) over
+ * the bundled assets: its pets and furniture join the bundled ones (so office
+ * furniture stays placeable), while its characters, floors, walls, and default
+ * layout replace the bundled ones when the pack provides them.
  */
 export async function buildAssetCache(
   distRoot: string,
   externalDirs: string[],
+  theme: string = DEFAULT_THEME,
 ): Promise<AssetCache> {
+  const themeDir = themeRoot(distRoot, theme);
+  const layered = themeDir ? [themeDir, ...externalDirs] : externalDirs;
+  const overridden = (dir: string): string =>
+    themeDir && fs.existsSync(path.join(themeDir, 'assets', dir)) ? themeDir : distRoot;
   return {
-    characters: await loadAllCharacters(distRoot, externalDirs),
-    pets: await loadAllPets(distRoot, externalDirs),
-    floorTiles: await loadFloorTiles(distRoot).then((t) => t?.sprites ?? null),
-    wallTiles: await loadWallTiles(distRoot).then((t) => t?.sets ?? null),
+    characters: await loadAllCharacters(distRoot, externalDirs, themeDir),
+    pets: await loadAllPets(distRoot, layered),
+    floorTiles: await loadFloorTiles(overridden('floors')).then((t) => t?.sprites ?? null),
+    wallTiles: await loadWallTiles(overridden('walls')).then((t) => t?.sets ?? null),
     carpetTiles: await loadCarpetTiles(distRoot).then((t) => t?.sets ?? null),
-    furniture: await loadAllFurniture(distRoot, externalDirs),
-    defaultLayout: loadDefaultLayout(distRoot),
+    furniture: await loadAllFurniture(distRoot, layered),
+    defaultLayout: (themeDir ? loadDefaultLayout(themeDir) : null) ?? loadDefaultLayout(distRoot),
+    theme: {
+      theme: themeDir ? theme : DEFAULT_THEME,
+      themes: listThemes(distRoot),
+      productsByArea: loadThemeManifest(distRoot, theme).productsByArea,
+    },
   };
 }

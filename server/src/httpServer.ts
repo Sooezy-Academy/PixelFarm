@@ -11,6 +11,7 @@ import type {
   AssetCache,
   ReloadAssetsSideEffect,
   SetHooksEnabledSideEffect,
+  SetThemeSideEffect,
 } from './clientMessageHandler.js';
 import { handleClientMessage } from './clientMessageHandler.js';
 import {
@@ -19,6 +20,7 @@ import {
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
+import type { ProduceInventory } from './produceInventory.js';
 import type { AgentState } from './types.js';
 
 /** Options for creating the HTTP + WebSocket server. */
@@ -45,6 +47,10 @@ export interface HttpServerOptions {
   onSetHooksEnabled?: SetHooksEnabledSideEffect;
   /** Invoked when an external asset directory is added/removed. Standalone reloads + re-broadcasts assets here. */
   onReloadAssets?: ReloadAssetsSideEffect;
+  /** Invoked on setTheme. Standalone rebuilds the asset cache and re-broadcasts theme, assets, and layout here. */
+  onSetTheme?: SetThemeSideEffect;
+  /** Produce tally behind collectProduct / inventoryLoaded. */
+  inventory?: ProduceInventory;
 }
 
 /** Result of createHttpServer(). */
@@ -210,6 +216,8 @@ function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions
           cache: options.assetCache ?? null,
           onSetHooksEnabled: options.onSetHooksEnabled,
           onReloadAssets: options.onReloadAssets,
+          onSetTheme: options.onSetTheme,
+          inventory: options.inventory,
           privileged,
         });
       } catch {

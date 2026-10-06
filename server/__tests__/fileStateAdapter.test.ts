@@ -35,6 +35,7 @@ describe('FileStateAdapter', () => {
     expect(adapter.getSetting('pixel-agents.soundEnabled', false)).toBe(true);
     expect(adapter.getSetting('pixel-agents.watchAllSessions', true)).toBe(false);
     expect(adapter.getSetting('pixel-agents.lastSeenVersion', 'x')).toBe('');
+    expect(adapter.getSetting('pixel-agents.theme', 'x')).toBe('office');
   });
 
   it('round-trips each namespaced setting key (hooksEnabled moved to the per-provider map)', () => {
@@ -45,7 +46,9 @@ describe('FileStateAdapter', () => {
     adapter.setSetting('pixel-agents.alwaysShowLabels', true);
     adapter.setSetting('pixel-agents.watchAllSessions', true);
     adapter.setSetting('pixel-agents.hooksInfoShown', true);
+    adapter.setSetting('pixel-agents.theme', 'farm');
 
+    expect(adapter.getSetting('pixel-agents.theme', '')).toBe('farm');
     expect(adapter.getSetting('pixel-agents.soundEnabled', true)).toBe(false);
     expect(adapter.getSetting('pixel-agents.lastSeenVersion', '')).toBe('1.3');
     expect(adapter.getSetting('pixel-agents.alwaysShowLabels', false)).toBe(true);

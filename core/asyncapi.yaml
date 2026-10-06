@@ -115,6 +115,8 @@ components:
         - $ref: '#/components/schemas/HooksConsentRequest'
         - $ref: '#/components/schemas/ExternalAssetDirectoriesUpdated'
         - $ref: '#/components/schemas/AreaMappingsLoaded'
+        - $ref: '#/components/schemas/ThemeLoaded'
+        - $ref: '#/components/schemas/InventoryLoaded'
         - $ref: '#/components/schemas/WorkspaceFolders'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
@@ -143,6 +145,8 @@ components:
         - $ref: '#/components/schemas/RemoveExternalAssetDirectory'
         - $ref: '#/components/schemas/SaveAreaMappings'
         - $ref: '#/components/schemas/SetShowAreas'
+        - $ref: '#/components/schemas/SetTheme'
+        - $ref: '#/components/schemas/CollectProduct'
         - $ref: '#/components/schemas/RequestDiagnostics'
       discriminator: type
 
@@ -746,6 +750,52 @@ components:
             items:
               type: string
 
+    ThemeLoaded:
+      description: |
+        The active visual theme (office, farm, ...) and what it offers. Sent during
+        the `webviewReady` handshake before `layoutLoaded`, and again after a
+        `setTheme` switch, which then re-sends the theme's assets and layout.
+      type: object
+      additionalProperties: false
+      required: [type, theme, themes, productsByArea]
+      properties:
+        type:
+          const: themeLoaded
+        theme:
+          type: string
+          description: Active theme id ("office" is the built-in default).
+        themes:
+          type: array
+          description: Every theme id this server can switch to, for the Settings selector.
+          items:
+            type: string
+        productsByArea:
+          type: object
+          description: |
+            Area label to furniture type id. When an agent seated in that Area
+            finishes a turn, the client briefly shows that item beside it (an egg
+            in the hen house). Empty for themes without products.
+          additionalProperties:
+            type: string
+
+    InventoryLoaded:
+      description: |
+        The produce tally: how many of each theme product agents have collected
+        (one per finished turn, from the Area of the agent's seat). Persisted in
+        `~/.pixel-agents/inventory.json`. Sent during the `webviewReady`
+        handshake and broadcast to every client whenever a product is collected.
+      type: object
+      additionalProperties: false
+      required: [type, counts]
+      properties:
+        type:
+          const: inventoryLoaded
+        counts:
+          type: object
+          description: Furniture type id (e.g. "EGG_BASKET") to the number collected.
+          additionalProperties:
+            type: integer
+
     ExternalAssetDirectoriesUpdated:
       description: External asset directory list changed (after add/remove).
       type: object
@@ -1054,6 +1104,40 @@ components:
           const: setShowAreas
         enabled:
           type: boolean
+
+    SetTheme:
+      description: |
+        Switch the visual theme. Persisted per surface; the server answers with
+        `themeLoaded` followed by the theme's assets and its own layout (each
+        theme keeps a separate layout file, so switching never overwrites one).
+      type: object
+      additionalProperties: false
+      required: [type, theme]
+      properties:
+        type:
+          const: setTheme
+        theme:
+          type: string
+
+    CollectProduct:
+      description: |
+        A client showed a theme product for an agent whose turn just ended. The
+        server counts it at most once per finished turn per agent (so several
+        open clients, or a reconnect replaying the waiting status, never count
+        twice), only for a product of the active theme, then broadcasts
+        `inventoryLoaded`.
+      type: object
+      additionalProperties: false
+      required: [type, id, product]
+      properties:
+        type:
+          const: collectProduct
+        id:
+          type: integer
+          description: The agent whose turn produced it.
+        product:
+          type: string
+          description: Furniture type id of the product (a value of `themeLoaded.productsByArea`).
 
     RequestDiagnostics:
       description: Request agent connection diagnostics (server responds with agentDiagnostics).

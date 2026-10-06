@@ -14,18 +14,17 @@ import type {
   LoadedPetSprites,
 } from '../../server/src/assetLoader.js';
 import {
-  loadCarpetTiles,
-  loadDefaultLayout,
-  loadFloorTiles,
-  loadWallTiles,
   sendAssetsToWebview,
-  sendCarpetTilesToWebview,
   sendCharacterSpritesToWebview,
-  sendFloorTilesToWebview,
   sendPetSpritesToWebview,
-  sendWallTilesToWebview,
 } from '../../server/src/assetLoader.js';
-import { loadAllCharacters, loadAllFurniture, loadAllPets } from '../../server/src/assetReload.js';
+import {
+  buildAssetCache,
+  loadAllCharacters,
+  loadAllFurniture,
+  loadAllPets,
+} from '../../server/src/assetReload.js';
+import { assetMessages, themeLoadedMessage } from '../../server/src/clientMessageHandler.js';
 import {
   getHooksConsent,
   getHooksEnabled,
@@ -38,10 +37,12 @@ import { setFolderNameResolver, setTerminalAdapter } from '../../server/src/file
 import type { LayoutWatcher } from '../../server/src/layoutPersistence.js';
 import {
   readLayoutFromFile,
+  setLayoutTheme,
   watchLayoutFile,
   writeLayoutToFile,
 } from '../../server/src/layoutPersistence.js';
 import { PathSet } from '../../server/src/pathKey.js';
+import { ProduceInventory, readInventory } from '../../server/src/produceInventory.js';
 import type { ConsentEffects } from '../../server/src/providers/hook/consentExecutor.js';
 import { applyConsentChoice } from '../../server/src/providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from '../../server/src/providers/hook/consentGate.js';
@@ -52,6 +53,7 @@ import {
   hookProviders,
 } from '../../server/src/providers/index.js';
 import { PixelAgentsServer } from '../../server/src/server.js';
+import { resolveTheme, themeRoot } from '../../server/src/theme.js';
 import {
   getProjectDirPath,
   launchNewTerminal,
@@ -69,6 +71,7 @@ import {
   GLOBAL_KEY_LAST_SEEN_VERSION,
   GLOBAL_KEY_SHOW_AREAS,
   GLOBAL_KEY_SOUND_ENABLED,
+  GLOBAL_KEY_THEME,
   GLOBAL_KEY_WATCH_ALL_SESSIONS,
   LAYOUT_REVISION_KEY,
 } from './constants.js';
@@ -102,6 +105,15 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
   // Root path of bundled assets (set once on first load)
   private assetsRoot: string | null = null;
+
+  // Active theme pack directory (null = default office theme), and the chain
+  // that keeps theme switches from interleaving.
+  private themeDir: string | null = null;
+  private themeSwitch: Promise<void> = Promise.resolve();
+
+  // Produce tally, and the products the active theme offers (collectProduct's allowlist).
+  private inventory: ProduceInventory;
+  private themeProducts: string[] = [];
 
   // Cross-window layout sync
   layoutWatcher: LayoutWatcher | null = null;
@@ -141,6 +153,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     this.store.on('broadcast', (message) => {
       this.sendOrBuffer(message);
     });
+    this.inventory = new ProduceInventory(this.store);
 
     setTerminalAdapter(new VscodeTerminalAdapter());
 
@@ -494,6 +507,25 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         }
       } else if (message.type === 'setHooksInfoShown') {
         this.adapter.setSetting(GLOBAL_KEY_HOOKS_INFO_SHOWN, true);
+      } else if (message.type === 'setTheme') {
+        if (typeof message.theme !== 'string' || !this.assetsRoot) return;
+        const requested = message.theme;
+        this.themeSwitch = this.themeSwitch
+          .then(async () => {
+            this.adapter.setSetting(GLOBAL_KEY_THEME, resolveTheme(this.assetsRoot!, requested));
+            await this.loadAndSendThemeAssets();
+            // The watcher is bound to the old theme's layout file.
+            this.layoutWatcher?.dispose();
+            this.layoutWatcher = null;
+            sendLayout(this.webview, this.defaultLayout);
+            this.startLayoutWatcher();
+          })
+          .catch((err: unknown) => {
+            console.error('[Extension] Theme switch failed:', err);
+          });
+      } else if (message.type === 'collectProduct') {
+        const counts = this.inventory.collect(message.id, message.product, this.themeProducts);
+        if (counts) this.store.broadcast({ type: 'inventoryLoaded', counts });
       } else if (message.type === 'setShowAreas') {
         const enabled = message.enabled as boolean;
         this.adapter.setSetting(GLOBAL_KEY_SHOW_AREAS, enabled);
@@ -770,53 +802,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
             console.log('[Extension] Using assetsRoot:', assetsRoot);
             this.assetsRoot = assetsRoot;
 
-            // Load bundled default layout
-            this.defaultLayout = loadDefaultLayout(assetsRoot);
-
-            // Load character sprites (bundled + external)
-            const charSprites = await this.loadAllCharacterSprites();
-            if (charSprites && this.webview) {
-              console.log(
-                `[Extension] ${charSprites.characters.length} character sprites loaded, sending to webview`,
-              );
-              sendCharacterSpritesToWebview(this.webview, charSprites);
-            }
-
-            // Load pet sprites (bundled + external)
-            const petSprites = await this.loadAllPetSprites();
-            if (petSprites && this.webview) {
-              console.log(
-                `[Extension] ${petSprites.pets.length} pet sprites loaded, sending to webview`,
-              );
-              sendPetSpritesToWebview(this.webview, petSprites);
-            }
-
-            // Load floor tiles
-            const floorTiles = await loadFloorTiles(assetsRoot);
-            if (floorTiles && this.webview) {
-              console.log('[Extension] Floor tiles loaded, sending to webview');
-              sendFloorTilesToWebview(this.webview, floorTiles);
-            }
-
-            // Load wall tiles
-            const wallTiles = await loadWallTiles(assetsRoot);
-            if (wallTiles && this.webview) {
-              console.log('[Extension] Wall tiles loaded, sending to webview');
-              sendWallTilesToWebview(this.webview, wallTiles);
-            }
-
-            // Load carpet tiles (auto-tile sprite sets, 3 demo variants by default)
-            const carpetTiles = await loadCarpetTiles(assetsRoot);
-            if (carpetTiles && this.webview) {
-              console.log('[Extension] Carpet tiles loaded, sending to webview');
-              sendCarpetTilesToWebview(this.webview, carpetTiles);
-            }
-
-            const assets = await this.loadAllFurnitureAssets();
-            if (assets && this.webview) {
-              console.log('[Extension] ✅ Assets loaded, sending to webview');
-              sendAssetsToWebview(this.webview, assets);
-            }
+            await this.loadAndSendThemeAssets();
           } catch (err) {
             console.error('[Extension] ❌ Error loading assets:', err);
           }
@@ -978,19 +964,49 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     );
   }
 
+  /**
+   * Resolve the persisted theme, point layout I/O at its layout file, load its
+   * assets (pack layered over the bundled set), and send theme + assets. The
+   * caller sends the layout afterwards.
+   */
+  private async loadAndSendThemeAssets(): Promise<void> {
+    if (!this.assetsRoot) return;
+    const theme = resolveTheme(this.assetsRoot, this.adapter.getSetting(GLOBAL_KEY_THEME, ''));
+    this.themeDir = themeRoot(this.assetsRoot, theme);
+    setLayoutTheme(theme);
+    const cache = await buildAssetCache(
+      this.assetsRoot,
+      readConfig().externalAssetDirectories,
+      theme,
+    );
+    this.defaultLayout = cache.defaultLayout;
+    this.themeProducts = Object.values(cache.theme?.productsByArea ?? {});
+    if (!this.webview) return;
+    console.log(`[Extension] Sending assets for theme ${theme}`);
+    this.webview.postMessage(themeLoadedMessage(cache));
+    this.webview.postMessage({ type: 'inventoryLoaded', counts: readInventory() });
+    for (const message of assetMessages(cache)) this.webview.postMessage(message);
+  }
+
+  /** External directories, behind the active theme pack when there is one. */
+  private layeredAssetDirs(): string[] {
+    const externalDirs = readConfig().externalAssetDirectories;
+    return this.themeDir ? [this.themeDir, ...externalDirs] : externalDirs;
+  }
+
   private async loadAllFurnitureAssets(): Promise<LoadedAssets | null> {
     if (!this.assetsRoot) return null;
-    return loadAllFurniture(this.assetsRoot, readConfig().externalAssetDirectories);
+    return loadAllFurniture(this.assetsRoot, this.layeredAssetDirs());
   }
 
   private async loadAllCharacterSprites(): Promise<LoadedCharacterSprites | null> {
     if (!this.assetsRoot) return null;
-    return loadAllCharacters(this.assetsRoot, readConfig().externalAssetDirectories);
+    return loadAllCharacters(this.assetsRoot, readConfig().externalAssetDirectories, this.themeDir);
   }
 
   private async loadAllPetSprites(): Promise<LoadedPetSprites | null> {
     if (!this.assetsRoot) return null;
-    return loadAllPets(this.assetsRoot, readConfig().externalAssetDirectories);
+    return loadAllPets(this.assetsRoot, this.layeredAssetDirs());
   }
 
   private async reloadAndSendFurniture(): Promise<void> {

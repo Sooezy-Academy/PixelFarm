@@ -297,6 +297,17 @@ export interface Pet {
 }
 
 /** Persisted record (lives on OfficeLayout). */
+/** A theme product shown briefly beside an agent whose turn just ended. */
+export interface ProductDrop {
+  /** Furniture type id whose sprite is drawn. */
+  type: string;
+  /** World-pixel anchor (bottom-center). */
+  x: number;
+  y: number;
+  /** Seconds left before it disappears. */
+  timer: number;
+}
+
 export interface PlacedPet {
   /** crypto.randomUUID() generated when first toggled on. */
   id: string;

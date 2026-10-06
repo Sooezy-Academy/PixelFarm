@@ -1,0 +1,9 @@
+{
+  "productsByArea": {
+    "Hen house": "EGG_BASKET",
+    "Cow barn": "MILK_CAN",
+    "Field": "WHEAT_SHEAF",
+    "Silo yard": "GRAIN_SACK",
+    "Market": "CRATE"
+  }
+}

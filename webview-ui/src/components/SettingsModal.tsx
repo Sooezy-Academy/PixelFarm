@@ -36,6 +36,16 @@ interface SettingsModalProps {
   onExportLayout: () => void;
   /** Browser-native layout import from a chosen file (standalone only). */
   onImportLayout: (file: File) => void;
+  /** Active visual theme and every theme the server offers (themeLoaded). */
+  theme: string;
+  themes: string[];
+  /** Switching swaps the layout under the editor, so it waits until Layout mode is closed. */
+  themeSwitchBlocked: boolean;
+}
+
+/** "farm" → "Farm" for the Settings row. */
+function themeLabel(theme: string): string {
+  return theme.charAt(0).toUpperCase() + theme.slice(1);
 }
 
 export function SettingsModal({
@@ -57,6 +67,9 @@ export function SettingsModal({
   showAreasAvailable,
   onExportLayout,
   onImportLayout,
+  theme,
+  themes,
+  themeSwitchBlocked,
 }: SettingsModalProps) {
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -169,6 +182,24 @@ export function SettingsModal({
           </Button>
         </div>
       ))}
+      {/* One row that cycles through the themes; the server answers with the new
+          theme's assets and its own layout. Hidden when only the default exists. */}
+      {themes.length > 1 && (
+        <MenuItem
+          onClick={() => {
+            if (themeSwitchBlocked) return;
+            const next = themes[(themes.indexOf(theme) + 1) % themes.length];
+            transport.send({ type: 'setTheme', theme: next });
+          }}
+          right={
+            <span className="text-xs text-text-muted">
+              {themeSwitchBlocked ? 'close Layout to switch' : themeLabel(theme)}
+            </span>
+          }
+        >
+          Theme
+        </MenuItem>
+      )}
       <Checkbox
         label="Sound Notifications"
         checked={soundLocal}

@@ -3,10 +3,12 @@ import * as os from 'os';
 import * as path from 'path';
 
 import {
+  DEFAULT_THEME,
   LAYOUT_FILE_DIR,
   LAYOUT_FILE_NAME,
   LAYOUT_FILE_POLL_INTERVAL_MS,
   LAYOUT_REVISION_KEY,
+  THEMED_LAYOUT_FILE_PREFIX,
 } from './constants.js';
 
 export interface LayoutWatcher {
@@ -14,8 +16,22 @@ export interface LayoutWatcher {
   dispose(): void;
 }
 
-function getLayoutFilePath(): string {
-  return path.join(os.homedir(), LAYOUT_FILE_DIR, LAYOUT_FILE_NAME);
+/**
+ * The theme whose layout file every read/write/watch below targets. Each theme
+ * keeps its own file — layout.json for the default theme, layout-<theme>.json
+ * otherwise — so switching themes never overwrites another theme's layout.
+ * One per process: each surface runs in its own process.
+ */
+let activeTheme = DEFAULT_THEME;
+
+export function setLayoutTheme(theme: string): void {
+  activeTheme = theme;
+}
+
+export function getLayoutFilePath(theme: string = activeTheme): string {
+  const fileName =
+    theme === DEFAULT_THEME ? LAYOUT_FILE_NAME : `${THEMED_LAYOUT_FILE_PREFIX}${theme}.json`;
+  return path.join(os.homedir(), LAYOUT_FILE_DIR, fileName);
 }
 
 export function readLayoutFromFile(): Record<string, unknown> | null {
@@ -92,8 +108,9 @@ export function loadLayout(
 }
 
 /**
- * Watch ~/.pixel-agents/layout.json for external changes (other VS Code windows).
- * Uses hybrid fs.watch + polling (same pattern as JSONL watching).
+ * Watch the active theme's layout file for external changes (other VS Code windows).
+ * Uses hybrid fs.watch + polling (same pattern as JSONL watching). The path is
+ * fixed at creation: recreate the watcher after `setLayoutTheme`.
  */
 export function watchLayoutFile(
   onExternalChange: (layout: Record<string, unknown>) => void,

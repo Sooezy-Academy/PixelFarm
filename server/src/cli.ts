@@ -12,13 +12,13 @@ import * as path from 'path';
 
 import { AgentRuntime } from './agentRuntime.js';
 import { AgentStateStore } from './agentStateStore.js';
-import {
-  buildAssetCache,
-  loadAllCharacters,
-  loadAllFurniture,
-  loadAllPets,
-} from './assetReload.js';
-import type { AssetCache, ReloadAssetsSideEffect } from './clientMessageHandler.js';
+import { buildAssetCache } from './assetReload.js';
+import type {
+  AssetCache,
+  ReloadAssetsSideEffect,
+  SetThemeSideEffect,
+} from './clientMessageHandler.js';
+import { themeSwitchMessages } from './clientMessageHandler.js';
 import {
   getHooksConsent,
   getHooksEnabled,
@@ -27,8 +27,11 @@ import {
 } from './configPersistence.js';
 import { MAX_PORT, MIN_PORT } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { setLayoutTheme } from './layoutPersistence.js';
+import { ProduceInventory } from './produceInventory.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
+import { resolveTheme } from './theme.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
@@ -121,10 +124,15 @@ async function main(): Promise<void> {
   // External asset directories are merged at startup too, so directories added
   // in a previous session survive a restart. buildAssetCache is the shared
   // loader used by both the standalone server and the VS Code adapter.
-  console.log('[Pixel Agents] Loading assets...');
+  // The theme decides which pack overlays the bundled assets and which layout
+  // file is read and written; an id with no bundled pack falls back to office.
+  let activeTheme = resolveTheme(distRoot, readConfig().standalone.theme);
+  setLayoutTheme(activeTheme);
+  console.log(`[Pixel Agents] Loading assets (theme: ${activeTheme})...`);
   const assetCache: AssetCache = await buildAssetCache(
     distRoot,
     readConfig().externalAssetDirectories,
+    activeTheme,
   );
   const charCount = assetCache.characters?.characters.length ?? 0;
   const petCount = assetCache.pets?.pets.length ?? 0;
@@ -198,12 +206,11 @@ async function main(): Promise<void> {
     // characters/pets/furniture can come from external dirs, so only those three
     // are reloaded and re-sent (mirrors the VS Code reload path).
     const onReloadAssets: ReloadAssetsSideEffect = async (send): Promise<void> => {
-      const externalDirs = readConfig().externalAssetDirectories;
-      const [characters, pets, furniture] = await Promise.all([
-        loadAllCharacters(distRoot, externalDirs),
-        loadAllPets(distRoot, externalDirs),
-        loadAllFurniture(distRoot, externalDirs),
-      ]);
+      const { characters, pets, furniture } = await buildAssetCache(
+        distRoot,
+        readConfig().externalAssetDirectories,
+        activeTheme,
+      );
       assetCache.characters = characters;
       assetCache.pets = pets;
       assetCache.furniture = furniture;
@@ -227,6 +234,32 @@ async function main(): Promise<void> {
       console.log('[Pixel Agents] Assets reloaded (external directory change)');
     };
 
+    // onSetTheme side effect: rebuild the whole cache for the new theme (in
+    // place, like onReloadAssets), retarget layout I/O at that theme's layout
+    // file, and broadcast to every client so no tab keeps editing the old
+    // theme's layout against the new file.
+    // Switches run one at a time, so two quick clicks can't land out of order.
+    let themeSwitch: Promise<void> = Promise.resolve();
+    const onSetTheme: SetThemeSideEffect = (requested) => {
+      themeSwitch = themeSwitch
+        .then(async () => {
+          const theme = resolveTheme(distRoot, requested);
+          adapter.setSetting('pixel-agents.theme', theme);
+          activeTheme = theme;
+          setLayoutTheme(theme);
+          Object.assign(
+            assetCache,
+            await buildAssetCache(distRoot, readConfig().externalAssetDirectories, theme),
+          );
+          for (const message of themeSwitchMessages(assetCache)) store.broadcast(message);
+          console.log(`[Pixel Agents] Theme switched to ${theme}`);
+        })
+        .catch((err: unknown) => {
+          console.error('[Pixel Agents] Theme switch failed:', err);
+        });
+      return themeSwitch;
+    };
+
     const config = await server.start({
       store,
       runtime,
@@ -237,6 +270,8 @@ async function main(): Promise<void> {
       assetCache,
       onSetHooksEnabled,
       onReloadAssets,
+      onSetTheme,
+      inventory: new ProduceInventory(store),
     });
     currentConfig = { port: config.port, token: config.token };
 

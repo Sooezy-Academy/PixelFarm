@@ -18,6 +18,11 @@ export const HOOK_SCRIPTS_DIR = '.pixel-agents/hooks';
 export const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30;
 export const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40;
 
+// ── Themes ───────────────────────────────────────────────────
+// The built-in visual theme (the bundled assets with no theme pack over them).
+
+export const DEFAULT_THEME = 'office';
+
 // ── Transport ────────────────────────────────────────────────
 // Connection-state names for the MessageTransport state machine.
 

@@ -8,9 +8,11 @@ import {
   type AssetCache,
   type ClientMessageContext,
   handleClientMessage,
+  themeSwitchMessages,
 } from '../src/clientMessageHandler.js';
 import { getHooksEnabled, readConfig, setHooksEnabled } from '../src/configPersistence.js';
 import { FileStateAdapter } from '../src/fileStateAdapter.js';
+import { setLayoutTheme, writeLayoutToFile } from '../src/layoutPersistence.js';
 import { CLAUDE_HOOK_EVENTS } from '../src/providers/hook/claude/constants.js';
 import type { AgentState } from '../src/types.js';
 
@@ -418,6 +420,104 @@ describe('clientMessageHandler: areas + carpet wire ordering', () => {
       const areaMsgs = sent.filter((m) => m.type === 'areaMappingsLoaded');
       expect(areaMsgs).toHaveLength(1);
       expect((areaMsgs[0] as { mappings: Record<string, string[]> }).mappings).toEqual({});
+    });
+  });
+
+  // ── Themes ───────────────────────────────────────────────────
+
+  describe('themes', () => {
+    const emptyCache = (): AssetCache => ({
+      characters: null,
+      pets: null,
+      floorTiles: null,
+      wallTiles: null,
+      carpetTiles: null,
+      furniture: null,
+      defaultLayout: { version: 1, marker: 'farm-default' },
+      theme: {
+        theme: 'farm',
+        themes: ['office', 'farm'],
+        productsByArea: { Field: 'WHEAT_SHEAF' },
+      },
+    });
+
+    afterEach(() => {
+      setLayoutTheme('office');
+    });
+
+    it('sends themeLoaded during the handshake, before layoutLoaded', () => {
+      ctx = freshCtx(emptyCache());
+
+      handleClientMessage({ type: 'webviewReady' }, (m) => sent.push(m), ctx);
+
+      const types = sent.map((m) => m.type);
+      expect(types.indexOf('themeLoaded')).toBeGreaterThanOrEqual(0);
+      expect(types.indexOf('themeLoaded')).toBeLessThan(types.indexOf('layoutLoaded'));
+      expect(sent.find((m) => m.type === 'themeLoaded')).toEqual({
+        type: 'themeLoaded',
+        theme: 'farm',
+        themes: ['office', 'farm'],
+        productsByArea: { Field: 'WHEAT_SHEAF' },
+      });
+    });
+
+    it('reports the default theme when the cache carries no theme', () => {
+      handleClientMessage({ type: 'webviewReady' }, (m) => sent.push(m), ctx);
+
+      expect(sent.find((m) => m.type === 'themeLoaded')).toEqual({
+        type: 'themeLoaded',
+        theme: 'office',
+        themes: ['office'],
+        productsByArea: {},
+      });
+    });
+
+    it('hands setTheme to the host side effect, ignoring a non-string theme', () => {
+      const requested: string[] = [];
+      ctx = { ...freshCtx(), onSetTheme: (theme) => void requested.push(theme) };
+
+      handleClientMessage({ type: 'setTheme', theme: 'farm' }, (m) => sent.push(m), ctx);
+      handleClientMessage({ type: 'setTheme', theme: 7 }, (m) => sent.push(m), ctx);
+
+      expect(requested).toEqual(['farm']);
+    });
+
+    it("re-sends theme, then assets, then the active theme's own layout on a switch", () => {
+      setLayoutTheme('farm');
+      const cache = emptyCache();
+
+      // No layout-farm.json yet: the theme's bundled default.
+      expect(themeSwitchMessages(cache).map((m) => m.type)).toEqual([
+        'themeLoaded',
+        'layoutLoaded',
+      ]);
+      expect(themeSwitchMessages(cache).at(-1)).toEqual({
+        type: 'layoutLoaded',
+        layout: { version: 1, marker: 'farm-default' },
+      });
+
+      // Once the farm layout is saved, that file wins.
+      writeLayoutToFile({ version: 1, marker: 'farm-saved' });
+      expect(themeSwitchMessages(cache).at(-1)).toEqual({
+        type: 'layoutLoaded',
+        layout: { version: 1, marker: 'farm-saved' },
+      });
+    });
+
+    it('saveLayout writes to the active theme layout file only', () => {
+      writeLayoutToFile({ version: 1, marker: 'office' });
+      setLayoutTheme('farm');
+
+      handleClientMessage(
+        { type: 'saveLayout', layout: { version: 1, marker: 'farm-edit' } },
+        (m) => sent.push(m),
+        ctx,
+      );
+
+      const read = (name: string) =>
+        JSON.parse(fs.readFileSync(path.join(tempHome, '.pixel-agents', name), 'utf-8'));
+      expect(read('layout-farm.json')).toEqual({ version: 1, marker: 'farm-edit' });
+      expect(read('layout.json')).toEqual({ version: 1, marker: 'office' });
     });
   });
 });

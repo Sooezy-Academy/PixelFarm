@@ -34,6 +34,8 @@ import {
   HEADLESS_CHARACTER_ALPHA,
   HOVERED_OUTLINE_ALPHA,
   OUTLINE_Z_SORT_OFFSET,
+  PRODUCT_DROP_DURATION_SEC,
+  PRODUCT_DROP_RISE_PX,
   ROTATE_BUTTON_BG,
   SEAT_AVAILABLE_COLOR,
   SEAT_BUSY_COLOR,
@@ -45,6 +47,7 @@ import {
   VOID_TILE_OUTLINE_COLOR,
 } from '../../constants.js';
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js';
+import { getCatalogEntry } from '../layout/furnitureCatalog.js';
 import { mapOffset } from '../projection.js';
 import {
   getCarpetJunctionSprite,
@@ -65,6 +68,7 @@ import type {
   Character,
   FurnitureInstance,
   Pet,
+  ProductDrop,
   Seat,
   SpriteData,
   TileType as TileTypeVal,
@@ -805,6 +809,31 @@ function renderBubbles(
   }
 }
 
+/** Theme products beside agents whose turn just ended: rise a little, fade out at the end. */
+function renderProductDrops(
+  ctx: CanvasRenderingContext2D,
+  drops: ProductDrop[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  for (const drop of drops) {
+    const sprite = getCatalogEntry(drop.type)?.sprite;
+    if (!sprite) continue;
+    const cached = getCachedSprite(sprite, zoom);
+    const progress = 1 - drop.timer / PRODUCT_DROP_DURATION_SEC;
+    const rise = Math.round(progress * PRODUCT_DROP_RISE_PX);
+    const x = Math.round(offsetX + drop.x * zoom - cached.width / 2);
+    const y = Math.round(offsetY + (drop.y - rise) * zoom - cached.height);
+    ctx.save();
+    if (drop.timer < BUBBLE_FADE_DURATION_SEC) {
+      ctx.globalAlpha = Math.max(0, drop.timer / BUBBLE_FADE_DURATION_SEC);
+    }
+    ctx.drawImage(cached, x, y);
+    ctx.restore();
+  }
+}
+
 function renderPetBubbles(
   ctx: CanvasRenderingContext2D,
   pets: Pet[],
@@ -903,6 +932,7 @@ export function renderFrame(
   showAreas?: boolean,
   activeAreaLabel?: string | null,
   pets?: Pet[],
+  productDrops?: ProductDrop[],
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -960,6 +990,11 @@ export function renderFrame(
     hoveredId,
     pets ?? [],
   );
+
+  // Theme products (above characters, below their bubbles)
+  if (productDrops && productDrops.length > 0) {
+    renderProductDrops(ctx, productDrops, offsetX, offsetY, zoom);
+  }
 
   // Speech bubbles (always on top of characters)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom);

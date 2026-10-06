@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { DEFAULT_THEME } from '../../../core/src/constants.js';
 import type { HooksConsentRequest } from '../../../core/src/messages.js';
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
@@ -110,6 +111,15 @@ interface ExtensionMessageState {
   setAreaMappings: (m: Record<string, string[]>) => void;
   showAreas: boolean;
   setShowAreas: (v: boolean) => void;
+  // Themes
+  /** Active visual theme id (themeLoaded). */
+  theme: string;
+  /** Every theme the server can switch to. */
+  themes: string[];
+  /** The active theme's products in display order (unique productsByArea values). */
+  themeProducts: string[];
+  /** Product type → number collected (inventoryLoaded). */
+  inventory: Record<string, number>;
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -153,6 +163,10 @@ export function useExtensionMessages(
   const consentRequest = consentQueue[0] ?? null;
   const [areaMappings, setAreaMappings] = useState<Record<string, string[]>>({});
   const [showAreas, setShowAreas] = useState(false);
+  const [theme, setTheme] = useState(DEFAULT_THEME);
+  const [themes, setThemes] = useState<string[]>([DEFAULT_THEME]);
+  const [themeProducts, setThemeProducts] = useState<string[]>([]);
+  const [inventory, setInventory] = useState<Record<string, number>>({});
 
   // The renderer keeps its own module-level copy (read every rAF frame), so both
   // sources of truth move together — the persisted value on settingsLoaded and
@@ -486,6 +500,13 @@ export function useExtensionMessages(
         os.setAgentActive(id, status === 'active');
         if (status === 'waiting') {
           os.showWaitingBubble(id, msg.awaitingInput === true);
+          // A finished turn (not the idle "waiting for input" state) yields the
+          // theme's product, e.g. an egg in the hen house.
+          // The server counts it into the inventory at most once per turn.
+          if (msg.awaitingInput !== true) {
+            const product = os.dropProduct(id);
+            if (product) transport.send({ type: 'collectProduct', id, product });
+          }
           playDoneSound();
         }
       } else if (msg.type === 'agentToolPermission') {
@@ -641,6 +662,19 @@ export function useExtensionMessages(
         const mappings = (msg.mappings ?? {}) as Record<string, string[]>;
         setAreaMappings(mappings);
         os.setAreaMappings(mappings);
+      } else if (msg.type === 'themeLoaded') {
+        if (typeof msg.theme === 'string') setTheme(msg.theme as string);
+        if (Array.isArray(msg.themes)) setThemes(msg.themes as string[]);
+        const products =
+          msg.productsByArea && typeof msg.productsByArea === 'object'
+            ? (msg.productsByArea as Record<string, string>)
+            : {};
+        os.setProductsByArea(products);
+        setThemeProducts([...new Set(Object.values(products))]);
+      } else if (msg.type === 'inventoryLoaded') {
+        if (msg.counts && typeof msg.counts === 'object') {
+          setInventory(msg.counts as Record<string, number>);
+        }
       } else if (msg.type === 'workspaceFolders') {
         const folders = msg.folders as WorkspaceFolder[];
         setWorkspaceFolders(folders);
@@ -796,6 +830,10 @@ export function useExtensionMessages(
       [],
     ),
     areaMappings,
+    theme,
+    themes,
+    themeProducts,
+    inventory,
     setAreaMappings,
     showAreas,
     setShowAreas,

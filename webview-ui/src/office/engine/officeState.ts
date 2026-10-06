@@ -12,8 +12,11 @@ import {
   INACTIVE_SEAT_TIMER_MIN_SEC,
   INACTIVE_SEAT_TIMER_RANGE_SEC,
   MAX_PET_ID_LENGTH,
+  MAX_PRODUCT_DROPS,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
+  PRODUCT_DROP_DURATION_SEC,
+  PRODUCT_DROP_OFFSET_X_PX,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
@@ -34,6 +37,7 @@ import type {
   Pet,
   PlacedFurniture,
   PlacedPet,
+  ProductDrop,
   Seat,
   TileType as TileTypeVal,
 } from '../types.js';
@@ -79,6 +83,11 @@ export class OfficeState {
    */
   areaMappings: Record<string, string[]> = {};
 
+  /** Area label → furniture type the active theme drops there when a turn ends (themeLoaded). */
+  productsByArea: Record<string, string> = {};
+  /** Products currently on screen, oldest first. */
+  productDrops: ProductDrop[] = [];
+
   /**
    * The first-run consent greeter, deliberately NOT in `characters`.
    *
@@ -103,6 +112,33 @@ export class OfficeState {
 
   setAreaMappings(mappings: Record<string, string[]>): void {
     this.areaMappings = mappings;
+  }
+
+  setProductsByArea(products: Record<string, string>): void {
+    this.productsByArea = products;
+    this.productDrops = [];
+  }
+
+  /**
+   * Show the theme's product for the Area the agent is seated in (an egg in the
+   * hen house) and return its type, or null when nothing drops: the agent has
+   * no seat, the seat is in no Area, or the theme maps nothing to that Area.
+   */
+  dropProduct(id: number): string | null {
+    const ch = this.characters.get(id);
+    const seat = ch?.seatId ? this.seats.get(ch.seatId) : undefined;
+    if (!ch || !seat) return null;
+    const label = this.layout.areaTiles?.[seat.seatRow * this.layout.cols + seat.seatCol];
+    const type = label ? this.productsByArea[label] : undefined;
+    if (!type || !getCatalogEntry(type)) return null;
+    this.productDrops.push({
+      type,
+      x: ch.x + PRODUCT_DROP_OFFSET_X_PX,
+      y: ch.y,
+      timer: PRODUCT_DROP_DURATION_SEC,
+    });
+    if (this.productDrops.length > MAX_PRODUCT_DROPS) this.productDrops.shift();
+    return type;
   }
 
   constructor(layout?: OfficeLayout) {
@@ -1126,6 +1162,11 @@ export class OfficeState {
     // Remove characters that finished despawn
     for (const id of toDelete) {
       this.characters.delete(id);
+    }
+
+    if (this.productDrops.length > 0) {
+      for (const drop of this.productDrops) drop.timer -= dt;
+      this.productDrops = this.productDrops.filter((drop) => drop.timer > 0);
     }
 
     // ── Pet FSM ────────────────────────────────────────────────

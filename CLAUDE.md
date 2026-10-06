@@ -196,8 +196,8 @@ Adding a new CLI integration is one subdirectory under `server/src/providers/hoo
 
 `core/asyncapi.yaml` is the contract. Pinned to **3.0.0** because `@asyncapi/modelina@5.10.1` declares `supportedVersions: ['3.0.0']` only; bumping to 3.1.0 produces `export type Root = any`. Revisit when Modelina ships 3.1.0 support.
 
-- **27 ServerMessage variants** (server → client): agent lifecycle, agent activity, sub-agent activity, team + context usage, assets, settings + workspace, diagnostics.
-- **18 ClientMessage variants** (client → server): lifecycle (`webviewReady`, `launchAgent`, `focusAgent`, `closeAgent`), layout (`saveAgentSeats`, `saveLayout`, `exportLayout`, `importLayout`), settings (`setSoundEnabled`, `setHooksEnabled`, `setWatchAllSessions`, `setAlwaysShowLabels`, `setHooksInfoShown`, `setLastSeenVersion`), discovery + assets, diagnostics.
+- **33 ServerMessage variants** (server → client): agent lifecycle, agent activity, sub-agent activity, team + context usage, assets, settings + workspace (incl. `themeLoaded`, `inventoryLoaded`), diagnostics.
+- **24 ClientMessage variants** (client → server): lifecycle (`webviewReady`, `launchAgent`, `focusAgent`, `closeAgent`), layout (`saveAgentSeats`, `saveLayout`, `exportLayout`, `importLayout`), settings (`setSoundEnabled`, `setHooksEnabled`, `setWatchAllSessions`, `setAlwaysShowLabels`, `setHooksInfoShown`, `setLastSeenVersion`, `setTheme`), `collectProduct`, discovery + assets, diagnostics.
 
 Both unions use `oneOf` with `discriminator: type`. Every concrete message sets `additionalProperties: false`.
 
@@ -326,12 +326,14 @@ Per-agent runtime data: provider reference, session key, transcript-fallback fie
   config.json              { vscode, standalone, externalAssetDirectories, hooksConsent, hooksEnabled (both per-provider) }
   vscode-state.json        { agents, seats }
   standalone-state.json    { agents, seats }
-  layout.json              OfficeLayout (shared across surfaces)
+  layout.json              OfficeLayout (shared across surfaces) — default (office) theme
+  layout-<theme>.json      Per-theme layout (e.g. layout-farm.json), so switching never overwrites another theme's
+  inventory.json           Produce tally { <productType>: count } (shared by both surfaces)
   server.json              { port, pid, authToken }
   hooks/claude-hook.js     Bundled hook script (CJS, shebang)
 ```
 
-`FileStateAdapter({ namespace })` backs both runtimes. Per-namespace settings: `soundEnabled`, `lastSeenVersion`, `alwaysShowLabels`, `watchAllSessions`, `hooksInfoShown` (the hooks preference is per-provider and machine-global, at the config top level). Running both surfaces in parallel never clobbers either.
+`FileStateAdapter({ namespace })` backs both runtimes. Per-namespace settings: `soundEnabled`, `lastSeenVersion`, `alwaysShowLabels`, `watchAllSessions`, `hooksInfoShown`, `theme` (the hooks preference is per-provider and machine-global, at the config top level). Running both surfaces in parallel never clobbers either.
 
 `migrateVsCodeState` (VS Code adapter only) walks each known legacy key once with **verify-before-clear** semantics: write to file, read back, only then clear the legacy key. While anything remains unmigrated, activation shows a non-blocking warning.
 
@@ -444,6 +446,10 @@ Toggle via "Layout" button. Tools: SELECT (default), Floor paint, Wall paint, Er
 **Character sprites**: 6 pre-colored PNGs (`assets/characters/char_0.png`–`char_5.png`), one per palette. Each 112×96: 7 frames × 16 px wide, 3 direction rows × 32 px tall. Row 0 = down, Row 1 = up, Row 2 = right. Frame order: walk1, walk2, walk3, type1, type2, read1, read2. Left = flipped right at runtime. When `hueShift !== 0`, `hueShiftSprites()` applies `adjustSprite()` to all frames before caching.
 
 **Load order**: `characterSpritesLoaded` → `floorTilesLoaded` → `wallTilesLoaded` → `furnitureAssetsLoaded` → `layoutLoaded`.
+
+### Themes
+
+A theme pack is `webview-ui/public/assets/themes/<id>/` shaped like an asset root (`<id>/assets/{characters,pets,furniture,floors,walls}`, `default-layout-N.json`) plus an optional `theme.json` (`productsByArea`: Area label → furniture type). `office` is the built-in default (no pack). `buildAssetCache(distRoot, externalDirs, theme)` layers the pack over the bundled assets: its **pets and furniture join** the bundled ones; its **characters, floors, walls, and default layout replace** them when present. Per-surface `theme` setting; `setTheme` makes the host rebuild the cache, retarget layout I/O (`setLayoutTheme` → `layout-<theme>.json`), and re-send `themeLoaded` → assets → `layoutLoaded` (standalone broadcasts to every tab, so no tab keeps saving the old theme's layout into the new file). Switches are serialized; the Settings Theme row is blocked while Layout mode is open. **Product drops**: on `agentStatus: waiting` (a finished turn, not awaiting-input) `OfficeState.dropProduct` shows the theme's item for the Area of the agent's seat for 3 s and reports it with `collectProduct`; `ProduceInventory` (`server/src/produceInventory.ts`) counts it into `~/.pixel-agents/inventory.json` **at most once per finished turn per agent** (a turn-end broadcast opens a slot, the first collect consumes it, the next `active` status or agent removal discards it), only for the active theme's products, then broadcasts `inventoryLoaded` — so extra tabs and reconnect replays never double-count. The webview's `InventoryPanel` shows the tally above the bottom toolbar (`BottomToolbar` `above` slot), hidden in Layout mode and for themes without products. The **farm** pack (hen house, cow barn, field, silo yard, market; hens and cows as pets; farmers in straw hats) is generated by `node scripts/generate-farm-theme.mjs` — edit the ASCII art there, not the PNGs.
 
 ## Testing
 

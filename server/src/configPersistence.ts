@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { CONFIG_FILE_NAME, LAYOUT_FILE_DIR } from './constants.js';
+import { CONFIG_FILE_NAME, DEFAULT_THEME, LAYOUT_FILE_DIR } from './constants.js';
 
 export interface AdapterSettings {
   soundEnabled: boolean;
@@ -13,6 +13,8 @@ export interface AdapterSettings {
   hooksInfoShown: boolean;
   showAreas: boolean;
   areaMappings: Record<string, string[]>;
+  /** Visual theme id ('office' default). Unknown ids fall back to the default when resolved against bundled packs. */
+  theme: string;
 }
 
 /** All keys in AdapterSettings. Used by adapters to map `pixel-agents.foo` → `foo`.
@@ -28,6 +30,7 @@ export const ADAPTER_SETTING_KEYS = [
   'hooksInfoShown',
   'showAreas',
   'areaMappings',
+  'theme',
 ] as const;
 
 export type AdapterSettingKey = (typeof ADAPTER_SETTING_KEYS)[number];
@@ -64,6 +67,7 @@ const DEFAULT_ADAPTER_SETTINGS: AdapterSettings = {
   hooksInfoShown: false,
   showAreas: false,
   areaMappings: {},
+  theme: DEFAULT_THEME,
 };
 
 function getConfigFilePath(): string {
@@ -145,6 +149,7 @@ function parseAdapterSettings(raw: unknown): AdapterSettings {
     showAreas:
       typeof obj.showAreas === 'boolean' ? obj.showAreas : DEFAULT_ADAPTER_SETTINGS.showAreas,
     areaMappings: parseAreaMappings(obj.areaMappings),
+    theme: typeof obj.theme === 'string' ? obj.theme : DEFAULT_ADAPTER_SETTINGS.theme,
   };
 }
 

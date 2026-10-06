@@ -37,6 +37,8 @@ export type ServerMessage =
   | HooksConsentRequest
   | ExternalAssetDirectoriesUpdated
   | AreaMappingsLoaded
+  | ThemeLoaded
+  | InventoryLoaded
   | WorkspaceFolders
   | AgentDiagnostics;
 
@@ -62,6 +64,8 @@ export type ClientMessage =
   | RemoveExternalAssetDirectory
   | SaveAreaMappings
   | SetShowAreas
+  | SetTheme
+  | CollectProduct
   | RequestDiagnostics;
 
 export interface ProviderCapabilities {
@@ -300,6 +304,18 @@ export interface AreaMappingsLoaded {
   mappings: Record<string, string[]>;
 }
 
+export interface ThemeLoaded {
+  type: 'themeLoaded';
+  theme: string;
+  themes: string[];
+  productsByArea: Record<string, string>;
+}
+
+export interface InventoryLoaded {
+  type: 'inventoryLoaded';
+  counts: Record<string, number>;
+}
+
 export interface WorkspaceFolders {
   type: 'workspaceFolders';
   folders: WorkspaceFolder[];
@@ -424,6 +440,17 @@ export interface SaveAreaMappings {
 export interface SetShowAreas {
   type: 'setShowAreas';
   enabled: boolean;
+}
+
+export interface SetTheme {
+  type: 'setTheme';
+  theme: string;
+}
+
+export interface CollectProduct {
+  type: 'collectProduct';
+  id: number;
+  product: string;
 }
 
 export interface RequestDiagnostics {

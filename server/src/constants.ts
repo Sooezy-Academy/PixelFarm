@@ -93,9 +93,20 @@ export const MAX_HOOK_BODY_SIZE = 65_536; // 64KB
 // ── Layout/Config Persistence ──────────────────────────────
 export const LAYOUT_FILE_DIR = '.pixel-agents';
 export const LAYOUT_FILE_NAME = 'layout.json';
+/** Non-default themes keep their own layout: `layout-<theme>.json` beside layout.json. */
+export const THEMED_LAYOUT_FILE_PREFIX = 'layout-';
 export const LAYOUT_FILE_POLL_INTERVAL_MS = 2000;
 export const LAYOUT_REVISION_KEY = 'layoutRevision';
 export const CONFIG_FILE_NAME = 'config.json';
+/** Produce tally (theme product type → count collected), shared by both surfaces. */
+export const INVENTORY_FILE_NAME = 'inventory.json';
+
+// ── Themes ──────────────────────────────────────────────────
+export { DEFAULT_THEME } from '../../core/src/constants.js';
+/** Theme packs live in `<dist>/assets/themes/<id>/`, each shaped like an asset root (`<id>/assets/...`). */
+export const THEMES_DIR_NAME = 'themes';
+/** Optional per-theme metadata file at the theme root. */
+export const THEME_MANIFEST_FILE_NAME = 'theme.json';
 
 // ── Avatar Customization ────────────────────────────────────
 /** Number of pre-colored bundled character palettes (char_0.png–char_5.png).
