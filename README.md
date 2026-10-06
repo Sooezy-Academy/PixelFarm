@@ -1,3 +1,11 @@
+# PixelFarm
+
+Pixel Agents Farm
+
+A fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) with a farm theme: agents work as farmers in a hen house, cow barn, field, silo yard and market, drop products when they finish a turn, and fill a produce inventory. Switch it on in Settings → Theme.
+
+---
+
 <h1 align="center">
   <a href="https://github.com/pixel-agents-hq/pixel-agents/discussions">
     <img src="webview-ui/public/banner.png" alt="Pixel Agents">
