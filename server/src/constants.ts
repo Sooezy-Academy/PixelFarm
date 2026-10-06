@@ -102,19 +102,8 @@ export const CONFIG_FILE_NAME = 'config.json';
 export const INVENTORY_FILE_NAME = 'inventory.json';
 
 // ── Demo simulator (--simulate) ─────────────────────────────
-/** Delay between simulated crew members arriving (the lead first). */
-export const SIM_SPAWN_STAGGER_MS = 1500;
-/** How long one simulated tool step runs (random in [min, min+range)). */
-export const SIM_STEP_MIN_MS = 2500;
-export const SIM_STEP_RANGE_MS = 3500;
-/** Steps per simulated turn (random in [min, min+range]). */
-export const SIM_STEPS_MIN = 2;
-export const SIM_STEPS_RANGE = 2;
-/** Idle pause between simulated turns (random in [min, min+range)). */
-export const SIM_IDLE_MIN_MS = 4000;
-export const SIM_IDLE_RANGE_MS = 8000;
-/** Ids for simulated agents, far above anything a real session gets. */
-export const SIM_FIRST_AGENT_ID = 900_000;
+// Centralized in core/src/constants.ts (the static demo runs the same simulation).
+export { SIM_FIRST_AGENT_ID, SIM_SPAWN_STAGGER_MS } from '../../core/src/constants.js';
 
 // ── Themes ──────────────────────────────────────────────────
 export { DEFAULT_THEME } from '../../core/src/constants.js';

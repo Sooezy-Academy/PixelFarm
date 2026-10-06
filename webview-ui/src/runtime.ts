@@ -16,6 +16,14 @@ const runtime: Runtime = typeof acquireVsCodeApi !== 'undefined' ? 'vscode' : 'b
 export const isBrowserRuntime = runtime === 'browser';
 
 /**
+ * A static (serverless) demo build — `vite build --mode demo`, e.g. the Netlify
+ * site. There is no Pixel Agents server behind the page, so StaticDemoTransport
+ * plays its part (build-time snapshot + simulated crew). Keyed on the build
+ * mode itself, so no env file is needed (the repo ignores `.env*`).
+ */
+export const isStaticDemo = isBrowserRuntime && import.meta.env.MODE === 'demo';
+
+/**
  * True only under the Playwright e2e harness, which sets `__PIXEL_AGENTS_E2E`
  * via `addInitScript` before any app code runs (so it's set in every frame,
  * including the VS Code webview iframe). Gates test-only diagnostics

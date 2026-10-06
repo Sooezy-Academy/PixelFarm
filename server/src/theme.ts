@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import type { SimulatedCrew } from '../../core/src/crewSimulation.js';
 import { DEFAULT_THEME, THEME_MANIFEST_FILE_NAME, THEMES_DIR_NAME } from './constants.js';
 
 /** What a theme pack declares about itself in `theme.json` (every field optional). */
@@ -88,12 +89,7 @@ export function loadThemeManifest(distRoot: string, theme: string): ThemeManifes
 }
 
 /** The crew the demo simulator plays in this theme (see FarmSimulator). */
-export interface ThemeCrew {
-  teamName: string;
-  leadName: string;
-  members: string[];
-  chores: Record<string, string[]>;
-}
+export type ThemeCrew = SimulatedCrew;
 
 const DEFAULT_CREW: ThemeCrew = {
   teamName: 'demo-team',

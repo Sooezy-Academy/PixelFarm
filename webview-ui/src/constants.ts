@@ -320,3 +320,7 @@ export const PET_THUMB_SCALE_MARGIN = 0.85;
 export const EMPTY_SPRITE_THUMBNAIL_BG = '#333';
 /** Maximum string length for a PlacedPet.id (defends against pathologically-long layout entries). */
 export const MAX_PET_ID_LENGTH = 128;
+
+// ── Static demo (serverless build) ───────────────────────────
+/** Browser storage key for the demo's produce tally (per viewer, best effort). */
+export const STATIC_DEMO_INVENTORY_STORAGE_KEY = 'pixel-agents.static-demo.inventory';
