@@ -311,6 +311,7 @@ export interface ThemeLoaded {
   productsByArea: Record<string, string>;
   roleAreas: Record<string, string>;
   leadArea?: string;
+  prices: Record<string, number>;
 }
 
 export interface InventoryLoaded {

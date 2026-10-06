@@ -757,7 +757,7 @@ components:
         `setTheme` switch, which then re-sends the theme's assets and layout.
       type: object
       additionalProperties: false
-      required: [type, theme, themes, productsByArea, roleAreas]
+      required: [type, theme, themes, productsByArea, roleAreas, prices]
       properties:
         type:
           const: themeLoaded
@@ -788,6 +788,14 @@ components:
         leadArea:
           type: string
           description: Area a team lead is seated in (the farm's Farmhouse), if the theme has one.
+        prices:
+          type: object
+          description: |
+            Product type to its sale price in bronze coins (100 bronze = 1 silver,
+            100 silver = 1 gold). The client values the collected inventory with
+            it to show the account balance. Empty for themes without products.
+          additionalProperties:
+            type: integer
 
     InventoryLoaded:
       description: |

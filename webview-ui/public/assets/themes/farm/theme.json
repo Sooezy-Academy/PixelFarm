@@ -6,6 +6,13 @@
     "Silo yard": "GRAIN_SACK",
     "Market": "CRATE"
   },
+  "prices": {
+    "EGG_BASKET": 12,
+    "MILK_CAN": 18,
+    "WHEAT_SHEAF": 8,
+    "GRAIN_SACK": 25,
+    "CRATE": 40
+  },
   "leadArea": "Farmhouse",
   "roleAreas": {
     "hens": "Hen house",

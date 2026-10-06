@@ -99,6 +99,7 @@ describe('ProduceInventory', () => {
             themes: ['office', 'farm'],
             productsByArea: { Field: 'MILK_CAN' },
             roleAreas: {},
+            prices: {},
           },
         },
       };

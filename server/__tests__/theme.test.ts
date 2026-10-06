@@ -68,13 +68,14 @@ describe('theme packs', () => {
     expect(loadThemeManifest(dist, 'farm')).toEqual({
       productsByArea: { 'Hen house': 'EGG_BASKET' },
       roleAreas: {},
+      prices: {},
     });
   });
 
   it('treats a missing or malformed theme.json as a theme without products', () => {
     addTheme('farm', { manifest: '{ not json' });
     addTheme('plain');
-    const none = { productsByArea: {}, roleAreas: {} };
+    const none = { productsByArea: {}, roleAreas: {}, prices: {} };
     expect(loadThemeManifest(dist, 'farm')).toEqual(none);
     expect(loadThemeManifest(dist, 'plain')).toEqual(none);
     expect(loadThemeManifest(dist, 'office')).toEqual(none);
@@ -91,6 +92,7 @@ describe('theme packs', () => {
       productsByArea: {},
       roleAreas: { hens: 'Hen house', cows: 'Cow barn' },
       leadArea: 'Farmhouse',
+      prices: {},
     });
   });
 
@@ -120,5 +122,14 @@ describe('theme packs', () => {
       expect(crew.members).toHaveLength(5);
       expect(crew.chores).toEqual({});
     }
+  });
+
+  it('reads product prices in bronze, keeping only non-negative whole numbers', () => {
+    addTheme('farm', {
+      manifest: JSON.stringify({
+        prices: { EGG_BASKET: 12, CRATE: 0, BAD: -3, HALF: 1.5, TEXT: '9' },
+      }),
+    });
+    expect(loadThemeManifest(dist, 'farm').prices).toEqual({ EGG_BASKET: 12, CRATE: 0 });
   });
 });

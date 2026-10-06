@@ -156,6 +156,7 @@ describe('buildAssetCache with a theme pack', () => {
         themes: ['office', 'farm'],
         productsByArea: { 'Hen house': 'EGG_BASKET' },
         roleAreas: {},
+        prices: {},
       });
     } finally {
       fs.rmSync(dist, { recursive: true, force: true });
@@ -174,6 +175,7 @@ describe('buildAssetCache with a theme pack', () => {
         themes: ['office', 'farm'],
         productsByArea: {},
         roleAreas: {},
+        prices: {},
       });
     } finally {
       fs.rmSync(dist, { recursive: true, force: true });

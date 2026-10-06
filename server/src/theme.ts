@@ -11,6 +11,8 @@ export interface ThemeManifest {
   roleAreas: Record<string, string>;
   /** Area a team lead is seated in. */
   leadArea?: string;
+  /** Product type → sale price in bronze coins. */
+  prices: Record<string, number>;
 }
 
 /** Keep only string → string entries of a loose JSON object. */
@@ -62,7 +64,7 @@ export function resolveTheme(distRoot: string, theme: unknown): string {
 }
 
 export function loadThemeManifest(distRoot: string, theme: string): ThemeManifest {
-  const manifest: ThemeManifest = { productsByArea: {}, roleAreas: {} };
+  const manifest: ThemeManifest = { productsByArea: {}, roleAreas: {}, prices: {} };
   const root = themeRoot(distRoot, theme);
   if (!root) return manifest;
   try {
@@ -71,6 +73,13 @@ export function loadThemeManifest(distRoot: string, theme: string): ThemeManifes
     ) as Record<string, unknown>;
     manifest.productsByArea = stringMap(raw.productsByArea);
     manifest.roleAreas = stringMap(raw.roleAreas, (name) => name.toLowerCase());
+    if (raw.prices && typeof raw.prices === 'object' && !Array.isArray(raw.prices)) {
+      for (const [product, price] of Object.entries(raw.prices as Record<string, unknown>)) {
+        if (typeof price === 'number' && Number.isInteger(price) && price >= 0) {
+          manifest.prices[product] = price;
+        }
+      }
+    }
     if (typeof raw.leadArea === 'string') manifest.leadArea = raw.leadArea;
   } catch {
     // Missing or malformed theme.json: the theme simply has no products or roles.

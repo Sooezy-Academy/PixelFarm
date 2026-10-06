@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toMajorMinor } from './changelogData.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import { CoinPanel } from './components/CoinPanel.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
@@ -101,6 +102,7 @@ function App() {
     themes,
     themeProducts,
     inventory,
+    themePrices,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Show migration notice once layout reset is detected
@@ -515,6 +517,16 @@ function App() {
           </p>
         </div>
       </Modal>
+
+      {/* The account: everything collected, sold at the theme's prices. */}
+      {Object.keys(themePrices).length > 0 && (
+        <CoinPanel
+          bronzeTotal={Object.entries(inventory).reduce(
+            (sum, [product, count]) => sum + count * (themePrices[product] ?? 0),
+            0,
+          )}
+        />
+      )}
 
       <BottomToolbar
         // The Layout editor's toolbar takes this corner while editing.

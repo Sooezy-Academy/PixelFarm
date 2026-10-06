@@ -120,6 +120,8 @@ interface ExtensionMessageState {
   themeProducts: string[];
   /** Product type → number collected (inventoryLoaded). */
   inventory: Record<string, number>;
+  /** Product type → sale price in bronze coins (themeLoaded.prices). */
+  themePrices: Record<string, number>;
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -167,6 +169,7 @@ export function useExtensionMessages(
   const [themes, setThemes] = useState<string[]>([DEFAULT_THEME]);
   const [themeProducts, setThemeProducts] = useState<string[]>([]);
   const [inventory, setInventory] = useState<Record<string, number>>({});
+  const [themePrices, setThemePrices] = useState<Record<string, number>>({});
 
   // The renderer keeps its own module-level copy (read every rAF frame), so both
   // sources of truth move together — the persisted value on settingsLoaded and
@@ -681,6 +684,11 @@ export function useExtensionMessages(
           typeof msg.leadArea === 'string' ? msg.leadArea : undefined,
         );
         setThemeProducts([...new Set(Object.values(products))]);
+        setThemePrices(
+          msg.prices && typeof msg.prices === 'object'
+            ? (msg.prices as Record<string, number>)
+            : {},
+        );
       } else if (msg.type === 'inventoryLoaded') {
         if (msg.counts && typeof msg.counts === 'object') {
           setInventory(msg.counts as Record<string, number>);
@@ -844,6 +852,7 @@ export function useExtensionMessages(
     themes,
     themeProducts,
     inventory,
+    themePrices,
     setAreaMappings,
     showAreas,
     setShowAreas,

@@ -1124,6 +1124,15 @@ writeJson('theme.json', {
     'Silo yard': 'GRAIN_SACK',
     Market: 'CRATE',
   },
+  // Sale price of each product in bronze coins (100 bronze = 1 silver, 100 silver = 1 gold).
+  // The coin display values the collected inventory with these.
+  prices: {
+    EGG_BASKET: 12,
+    MILK_CAN: 18,
+    WHEAT_SHEAF: 8,
+    GRAIN_SACK: 25,
+    CRATE: 40,
+  },
   // The farm team: teammates with these names each work in their own Area, and the
   // team lead runs things from the farmhouse. `npm run farm:demo` plays this team.
   leadArea: 'Farmhouse',
