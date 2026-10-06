@@ -74,6 +74,8 @@ export interface AgentState {
    *  tool_use id that spawned it. Links this character to the lead's
    *  backgroundAgentToolIds entry so the queue-operation completion removes it. */
   spawnToolUseId?: string;
+  /** Played by the demo simulator (`--simulate`), not a real session: never persisted. */
+  simulated?: boolean;
   /** Tool ids of spawn calls whose input carried a `name` — teammates-to-be.
    *  Every agentToolStart (re-)broadcast for these carries isTeammateSpawn so
    *  the webview never creates a Subtask ghost for them. Transient, lazily

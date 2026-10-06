@@ -88,6 +88,15 @@ export class OfficeState {
   /** Products currently on screen, oldest first. */
   productDrops: ProductDrop[] = [];
 
+  /** Teammate name (lower case) → Area the theme seats it in (themeLoaded.roleAreas). */
+  roleAreas: Record<string, string> = {};
+  /** Area the theme seats a team lead in. */
+  leadArea: string | undefined;
+  /** Walkable tiles per role Area: role agents wander only inside their own Area. */
+  private wanderTilesByArea = new Map<string, Array<{ col: number; row: number }>>();
+  /** Agents added since the last frame: a role found for them now places them directly. */
+  private justAdded = new Set<number>();
+
   /**
    * The first-run consent greeter, deliberately NOT in `characters`.
    *
@@ -119,6 +128,104 @@ export class OfficeState {
     this.productDrops = [];
   }
 
+  setThemeRoles(roleAreas: Record<string, string>, leadArea: string | undefined): void {
+    this.roleAreas = roleAreas;
+    this.leadArea = leadArea;
+    this.wanderTilesByArea.clear();
+  }
+
+  /** Where an idle agent may wander: its role Area's walkable tiles, or the whole map. */
+  private wanderTilesFor(ch: Character): Array<{ col: number; row: number }> {
+    const area = this.roleArea(ch);
+    if (!area) return this.walkableTiles;
+    let tiles = this.wanderTilesByArea.get(area);
+    if (!tiles) {
+      const areaTiles = this.layout.areaTiles ?? [];
+      tiles = this.walkableTiles.filter(
+        (t) => areaTiles[t.row * this.layout.cols + t.col] === area,
+      );
+      this.wanderTilesByArea.set(area, tiles);
+    }
+    return tiles.length > 0 ? tiles : this.walkableTiles;
+  }
+
+  /**
+   * Move an agent to a seat: walking there normally, or appearing there
+   * directly when it was only just added (it learned its role while still
+   * spawning, so there is nothing to watch it walk away from).
+   */
+  private moveToSeat(id: number, seatId: string): void {
+    const ch = this.characters.get(id);
+    const seat = this.seats.get(seatId);
+    if (!ch || !seat) return;
+    if (!this.justAdded.has(id)) {
+      this.reassignSeat(id, seatId);
+      return;
+    }
+    if (ch.seatId) {
+      const old = this.seats.get(ch.seatId);
+      if (old) old.assigned = false;
+    }
+    seat.assigned = true;
+    ch.seatId = seatId;
+    ch.tileCol = seat.seatCol;
+    ch.tileRow = seat.seatRow;
+    ch.x = seat.seatCol * TILE_SIZE + TILE_SIZE / 2;
+    ch.y = seat.seatRow * TILE_SIZE + TILE_SIZE / 2;
+    ch.path = [];
+    ch.moveProgress = 0;
+    ch.state = CharacterState.TYPE;
+    ch.dir = seat.facingDir;
+  }
+
+  /** The Area the theme assigns this agent by its team role (lead, or teammate name), if any. */
+  private roleArea(ch: Character): string | undefined {
+    if (ch.isTeamLead) return this.leadArea;
+    const name = ch.agentName?.toLowerCase();
+    return name ? this.roleAreas[name] : undefined;
+  }
+
+  /**
+   * Seat an agent in the Area its team role belongs to (the farm's "hens" in
+   * the hen house, the lead in the farmhouse), walking it there. When the Area
+   * is full, an agent sitting there WITHOUT that role is moved to another free
+   * seat to make room. Returns true when the agent has a role Area and now
+   * sits in it; false when it has no role, or the Area is full of agents that
+   * hold that role too (it then keeps its seat).
+   */
+  placeByRole(id: number): boolean {
+    const ch = this.characters.get(id);
+    if (!ch) return false;
+    const area = this.roleArea(ch);
+    if (!area) return false;
+    if (ch.seatId && this.seatZone(ch.seatId) === area) return true;
+    const areaSeats = [...this.seats.keys()].filter((uid) => this.seatZone(uid) === area);
+    const free = areaSeats.find((uid) => !this.seats.get(uid)!.assigned);
+    if (free) {
+      this.moveToSeat(id, free);
+      return true;
+    }
+    for (const uid of areaSeats) {
+      const occupant = [...this.characters.values()].find((c) => c.seatId === uid);
+      if (!occupant || this.roleArea(occupant) === area) continue;
+      const elsewhere = this.findFreeSeat(occupant.folderName);
+      if (!elsewhere) continue;
+      this.reassignSeat(occupant.id, elsewhere);
+      this.moveToSeat(id, uid);
+      return true;
+    }
+    return false;
+  }
+
+  /** Re-apply role seating to every agent (after a layout or theme change). */
+  placeAllByRole(): void {
+    // Leads first, so a full Area keeps its seat for the lead it belongs to.
+    const ids = [...this.characters.values()]
+      .sort((a, b) => Number(b.isTeamLead === true) - Number(a.isTeamLead === true))
+      .map((ch) => ch.id);
+    for (const id of ids) this.placeByRole(id);
+  }
+
   /**
    * Show the theme's product for the Area the agent is seated in (an egg in the
    * hen house) and return its type, or null when nothing drops: the agent has
@@ -131,10 +238,12 @@ export class OfficeState {
     const label = this.layout.areaTiles?.[seat.seatRow * this.layout.cols + seat.seatCol];
     const type = label ? this.productsByArea[label] : undefined;
     if (!type || !getCatalogEntry(type)) return null;
+    // At the seat, not the character: an agent still walking over (or wandering)
+    // when its turn ends still produces in its own Area.
     this.productDrops.push({
       type,
-      x: ch.x + PRODUCT_DROP_OFFSET_X_PX,
-      y: ch.y,
+      x: seat.seatCol * TILE_SIZE + TILE_SIZE / 2 + PRODUCT_DROP_OFFSET_X_PX,
+      y: seat.seatRow * TILE_SIZE + TILE_SIZE / 2,
       timer: PRODUCT_DROP_DURATION_SEC,
     });
     if (this.productDrops.length > MAX_PRODUCT_DROPS) this.productDrops.shift();
@@ -148,6 +257,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(this.layout.furniture);
     this.furniture = layoutToFurnitureInstances(this.layout.furniture);
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this.wanderTilesByArea.clear();
     // Pets are built last because they need walkableTiles populated for spawn.
     this.rebuildPetsFromLayout(this.layout);
   }
@@ -161,6 +271,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(layout.furniture);
     this.rebuildFurnitureInstances();
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this.wanderTilesByArea.clear();
 
     // Shift character positions when grid expands left/up
     if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -528,6 +639,7 @@ export class OfficeState {
       startMatrixEffect(ch, 'spawn');
     }
     this.characters.set(id, ch);
+    this.justAdded.add(id);
   }
 
   // ── Greeter ───────────────────────────────────────────────────
@@ -1100,6 +1212,8 @@ export class OfficeState {
     if (leadAgentId !== undefined) {
       ch.isHeadless = false;
     }
+    // A theme role (the farm's "hens", or the lead's farmhouse) outranks clustering.
+    if (this.placeByRole(id)) return;
     // A teammate discovered only after its plain external session was adopted is
     // linked here, not at creation, so it never went through the seat-next-to-lead
     // path addAgent runs for inline teammates. Cluster it now, once, on first link.
@@ -1147,7 +1261,14 @@ export class OfficeState {
 
       // Temporarily unblock own seat so character can pathfind to it
       this.withOwnSeatUnblocked(ch, () =>
-        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles),
+        updateCharacter(
+          ch,
+          dt,
+          this.wanderTilesFor(ch),
+          this.seats,
+          this.tileMap,
+          this.blockedTiles,
+        ),
       );
 
       // Tick bubble timer for waiting bubbles
@@ -1163,6 +1284,8 @@ export class OfficeState {
     for (const id of toDelete) {
       this.characters.delete(id);
     }
+
+    this.justAdded.clear();
 
     if (this.productDrops.length > 0) {
       for (const drop of this.productDrops) drop.timer -= dt;

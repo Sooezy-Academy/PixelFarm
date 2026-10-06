@@ -250,6 +250,8 @@ export function useExtensionMessages(
           if (p.isHeadless) os.setHeadless(p.id, true);
         }
         pendingAgents = [];
+        // Seat ids differ between layouts (a theme switch): put roles back in their Areas.
+        os.placeAllByRole();
         layoutReadyRef.current = true;
         setLayoutReady(true);
         if (msg.wasReset) {
@@ -294,6 +296,8 @@ export function useExtensionMessages(
             ch.teamName = teamName ?? parentCh?.teamName;
             ch.agentName = teammateName;
           }
+          // A theme role ("hens" → hen house) outranks sitting next to the lead.
+          os.placeByRole(id);
         } else {
           const palette = msg.palette as number | undefined;
           const hueShift = msg.hueShift as number | undefined;
@@ -670,6 +674,12 @@ export function useExtensionMessages(
             ? (msg.productsByArea as Record<string, string>)
             : {};
         os.setProductsByArea(products);
+        os.setThemeRoles(
+          msg.roleAreas && typeof msg.roleAreas === 'object'
+            ? (msg.roleAreas as Record<string, string>)
+            : {},
+          typeof msg.leadArea === 'string' ? msg.leadArea : undefined,
+        );
         setThemeProducts([...new Set(Object.values(products))]);
       } else if (msg.type === 'inventoryLoaded') {
         if (msg.counts && typeof msg.counts === 'object') {

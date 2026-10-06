@@ -48,6 +48,8 @@ export interface ThemeState {
   theme: string;
   themes: string[];
   productsByArea: Record<string, string>;
+  roleAreas: Record<string, string>;
+  leadArea?: string;
 }
 
 /** Cached assets loaded at server startup. Sent to each WebSocket client on webviewReady. */
@@ -574,6 +576,7 @@ export function themeLoadedMessage(cache: AssetCache | null): Record<string, unk
     theme: DEFAULT_THEME,
     themes: [DEFAULT_THEME],
     productsByArea: {},
+    roleAreas: {},
   };
   return { type: 'themeLoaded', ...theme };
 }

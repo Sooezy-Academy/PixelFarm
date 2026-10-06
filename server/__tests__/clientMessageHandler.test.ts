@@ -438,6 +438,7 @@ describe('clientMessageHandler: areas + carpet wire ordering', () => {
         theme: 'farm',
         themes: ['office', 'farm'],
         productsByArea: { Field: 'WHEAT_SHEAF' },
+        roleAreas: {},
       },
     });
 
@@ -458,6 +459,7 @@ describe('clientMessageHandler: areas + carpet wire ordering', () => {
         theme: 'farm',
         themes: ['office', 'farm'],
         productsByArea: { Field: 'WHEAT_SHEAF' },
+        roleAreas: {},
       });
     });
 
@@ -469,6 +471,7 @@ describe('clientMessageHandler: areas + carpet wire ordering', () => {
         theme: 'office',
         themes: ['office'],
         productsByArea: {},
+        roleAreas: {},
       });
     });
 

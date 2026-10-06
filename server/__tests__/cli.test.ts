@@ -72,6 +72,14 @@ describe('parseArgs', () => {
     expect(args.host).toBe('127.0.0.1');
   });
 
+  it('turns on demo mode only with --simulate', () => {
+    expect(parseArgs([]).simulate).toBeUndefined();
+    expect(parseArgs(['--simulate', '--port', '3100'])).toMatchObject({
+      simulate: true,
+      port: 3100,
+    });
+  });
+
   // 2. Valid --port is accepted
   it('accepts a valid --port', () => {
     expect(parseArgs(['--port', '3100']).port).toBe(3100);

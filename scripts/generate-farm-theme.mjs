@@ -7,7 +7,7 @@
  *     assets/pets/{hen,cow}/             manifest.json + 96×96 pet sheet
  *     assets/characters/char_0..5.png    the office characters in straw hats
  *     assets/floors/floor_0..5.png       grayscale patterns (colorized per tile)
- *     assets/default-layout-1.json       the farm map, with its Areas
+ *     assets/default-layout-2.json       the farm map, with its Areas (revision 2: farmhouse)
  *
  * The art is drawn here from ASCII maps and primitives so it stays reviewable
  * and editable as source. Re-run after editing:  node scripts/generate-farm-theme.mjs
@@ -908,7 +908,7 @@ function floors() {
 
 // ── Layout ──────────────────────────────────────────────────────────────
 
-const COLS = 30;
+const COLS = 36;
 const ROWS = 22;
 const T = { WALL: 0, GRASS: 1, SOIL: 2, STRAW: 3, PATH: 4, PLANKS: 5, MEADOW: 6, VOID: 255 };
 const COLOR = {
@@ -1002,9 +1002,19 @@ function buildLayout() {
   put('CRATE', 28, 16);
   put('WHEAT_SHEAF', 28, 11);
 
-  // Fences along the road
+  // ── Farmhouse (top right): the team lead's office, reached by its own path
+  building(30, 1, 6, 8, T.PLANKS, 32);
+  area(31, 2, 4, 6, 'Farmhouse');
+  fill(32, 9, 2, 10, T.PATH);
+  put('BOOKSHELF', 31, 1);
+  put('CLOCK', 34, 0);
+  put('DESK_FRONT', 31, 3);
+  put('STOOL', 32, 5);
+  put('PLANT', 34, 5);
+
+  // Fences along the road, with gaps for the two paths
   for (let c = 0; c < COLS; c++) {
-    if (c === 14 || c === 15) continue;
+    if (c === 14 || c === 15 || c === 32 || c === 33) continue;
     put('FENCE_FRONT', c, 18);
   }
 
@@ -1013,7 +1023,7 @@ function buildLayout() {
     version: 1,
     cols: COLS,
     rows: ROWS,
-    layoutRevision: 1,
+    layoutRevision: 2,
     tiles,
     tileColors,
     furniture,
@@ -1032,6 +1042,7 @@ function buildLayout() {
       { label: 'Field', color: '#62a83f' },
       { label: 'Silo yard', color: '#97a1ab' },
       { label: 'Market', color: '#79a7d8' },
+      { label: 'Farmhouse', color: '#b07a45' },
     ],
     areaTiles,
   };
@@ -1103,7 +1114,7 @@ writeJson('assets/pets/hen/manifest.json', { id: 'hen', name: 'Hen' });
 
 farmerCharacters();
 floors().forEach((c, i) => writeFile(`assets/floors/floor_${i}.png`, c.toPng()));
-writeJson('assets/default-layout-1.json', buildLayout());
+writeJson('assets/default-layout-2.json', buildLayout());
 
 writeJson('theme.json', {
   productsByArea: {
@@ -1112,6 +1123,47 @@ writeJson('theme.json', {
     Field: 'WHEAT_SHEAF',
     'Silo yard': 'GRAIN_SACK',
     Market: 'CRATE',
+  },
+  // The farm team: teammates with these names each work in their own Area, and the
+  // team lead runs things from the farmhouse. `npm run farm:demo` plays this team.
+  leadArea: 'Farmhouse',
+  roleAreas: {
+    hens: 'Hen house',
+    cows: 'Cow barn',
+    field: 'Field',
+    market: 'Market',
+    silo: 'Silo yard',
+  },
+  // What the demo simulator (pixel-agents --simulate) has each role do.
+  // Lines starting with Checking/Counting/Inspecting/Reading/Reviewing/Planning
+  // play the reading animation; the rest play the working one.
+  simulation: {
+    teamName: 'farm-team',
+    leadName: 'manager',
+    chores: {
+      manager: [
+        'Planning the day',
+        'Assigning chores',
+        'Reviewing the ledger',
+        'Checking the weather',
+        'Ordering feed',
+      ],
+      hens: ['Feeding the hens', 'Collecting eggs', 'Cleaning the nest boxes', 'Counting eggs'],
+      cows: ['Feeding the cows', 'Milking the cows', 'Mucking out the barn', 'Checking the herd'],
+      field: ['Ploughing the field', 'Sowing wheat', 'Harvesting wheat', 'Inspecting the crops'],
+      market: [
+        'Loading the cart',
+        'Driving to town',
+        'Selling eggs and milk',
+        'Counting the takings',
+      ],
+      silo: [
+        'Carrying grain to the silo',
+        'Loading the truck',
+        'Sweeping the yard',
+        'Checking grain levels',
+      ],
+    },
   },
 });
 

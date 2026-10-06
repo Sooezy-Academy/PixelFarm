@@ -5,5 +5,56 @@
     "Field": "WHEAT_SHEAF",
     "Silo yard": "GRAIN_SACK",
     "Market": "CRATE"
+  },
+  "leadArea": "Farmhouse",
+  "roleAreas": {
+    "hens": "Hen house",
+    "cows": "Cow barn",
+    "field": "Field",
+    "market": "Market",
+    "silo": "Silo yard"
+  },
+  "simulation": {
+    "teamName": "farm-team",
+    "leadName": "manager",
+    "chores": {
+      "manager": [
+        "Planning the day",
+        "Assigning chores",
+        "Reviewing the ledger",
+        "Checking the weather",
+        "Ordering feed"
+      ],
+      "hens": [
+        "Feeding the hens",
+        "Collecting eggs",
+        "Cleaning the nest boxes",
+        "Counting eggs"
+      ],
+      "cows": [
+        "Feeding the cows",
+        "Milking the cows",
+        "Mucking out the barn",
+        "Checking the herd"
+      ],
+      "field": [
+        "Ploughing the field",
+        "Sowing wheat",
+        "Harvesting wheat",
+        "Inspecting the crops"
+      ],
+      "market": [
+        "Loading the cart",
+        "Driving to town",
+        "Selling eggs and milk",
+        "Counting the takings"
+      ],
+      "silo": [
+        "Carrying grain to the silo",
+        "Loading the truck",
+        "Sweeping the yard",
+        "Checking grain levels"
+      ]
+    }
   }
 }

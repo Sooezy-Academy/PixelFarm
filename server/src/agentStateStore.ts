@@ -156,6 +156,8 @@ export class AgentStateStore {
       // them from sidecars after a restore. Persisting them would resurrect
       // immortal characters whose completion signal never comes.
       if (agent.spawnToolUseId) continue;
+      // Simulated agents exist only while the simulator runs.
+      if (agent.simulated) continue;
       persisted.push({
         id: agent.id,
         sessionId: agent.sessionId,

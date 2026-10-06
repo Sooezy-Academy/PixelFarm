@@ -7,6 +7,23 @@ import { DEFAULT_THEME, THEME_MANIFEST_FILE_NAME, THEMES_DIR_NAME } from './cons
 export interface ThemeManifest {
   /** Area label → furniture type shown beside an agent in that Area when its turn ends. */
   productsByArea: Record<string, string>;
+  /** Teammate name (lower case) → Area label it is seated in. */
+  roleAreas: Record<string, string>;
+  /** Area a team lead is seated in. */
+  leadArea?: string;
+}
+
+/** Keep only string → string entries of a loose JSON object. */
+function stringMap(
+  raw: unknown,
+  normalizeKey: (key: string) => string = (k) => k,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string') out[normalizeKey(key)] = value;
+  }
+  return out;
 }
 
 const THEME_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
@@ -45,21 +62,68 @@ export function resolveTheme(distRoot: string, theme: unknown): string {
 }
 
 export function loadThemeManifest(distRoot: string, theme: string): ThemeManifest {
-  const manifest: ThemeManifest = { productsByArea: {} };
+  const manifest: ThemeManifest = { productsByArea: {}, roleAreas: {} };
   const root = themeRoot(distRoot, theme);
   if (!root) return manifest;
   try {
     const raw = JSON.parse(
       fs.readFileSync(path.join(root, THEME_MANIFEST_FILE_NAME), 'utf-8'),
     ) as Record<string, unknown>;
-    const products = raw.productsByArea;
-    if (products && typeof products === 'object' && !Array.isArray(products)) {
-      for (const [area, type] of Object.entries(products)) {
-        if (typeof type === 'string') manifest.productsByArea[area] = type;
-      }
-    }
+    manifest.productsByArea = stringMap(raw.productsByArea);
+    manifest.roleAreas = stringMap(raw.roleAreas, (name) => name.toLowerCase());
+    if (typeof raw.leadArea === 'string') manifest.leadArea = raw.leadArea;
   } catch {
-    // Missing or malformed theme.json: the theme simply has no products.
+    // Missing or malformed theme.json: the theme simply has no products or roles.
   }
   return manifest;
+}
+
+/** The crew the demo simulator plays in this theme (see FarmSimulator). */
+export interface ThemeCrew {
+  teamName: string;
+  leadName: string;
+  members: string[];
+  chores: Record<string, string[]>;
+}
+
+const DEFAULT_CREW: ThemeCrew = {
+  teamName: 'demo-team',
+  leadName: 'lead',
+  members: ['alex', 'blair', 'casey', 'drew', 'emery'],
+  chores: {},
+};
+
+/**
+ * The simulator's crew for a theme: the lead plus one member per role in
+ * `roleAreas` (so each lands in its Area), with chore lines from theme.json's
+ * `simulation` section. Themes without roles get a generic five-person crew.
+ */
+export function loadThemeCrew(distRoot: string, theme: string): ThemeCrew {
+  const root = themeRoot(distRoot, theme);
+  if (!root) return DEFAULT_CREW;
+  try {
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(root, THEME_MANIFEST_FILE_NAME), 'utf-8'),
+    ) as Record<string, unknown>;
+    const sim = (raw.simulation ?? {}) as Record<string, unknown>;
+    const members = Object.keys(stringMap(raw.roleAreas, (name) => name.toLowerCase()));
+    const chores: Record<string, string[]> = {};
+    if (sim.chores && typeof sim.chores === 'object' && !Array.isArray(sim.chores)) {
+      for (const [name, lines] of Object.entries(sim.chores as Record<string, unknown>)) {
+        if (Array.isArray(lines)) {
+          const strings = lines.filter((l): l is string => typeof l === 'string');
+          if (strings.length > 0) chores[name.toLowerCase()] = strings;
+        }
+      }
+    }
+    return {
+      teamName: typeof sim.teamName === 'string' ? sim.teamName : DEFAULT_CREW.teamName,
+      leadName:
+        typeof sim.leadName === 'string' ? sim.leadName.toLowerCase() : DEFAULT_CREW.leadName,
+      members: members.length > 0 ? members : DEFAULT_CREW.members,
+      chores,
+    };
+  } catch {
+    return DEFAULT_CREW;
+  }
 }

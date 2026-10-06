@@ -3,7 +3,13 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { listThemes, loadThemeManifest, resolveTheme, themeRoot } from '../src/theme.js';
+import {
+  listThemes,
+  loadThemeCrew,
+  loadThemeManifest,
+  resolveTheme,
+  themeRoot,
+} from '../src/theme.js';
 
 describe('theme packs', () => {
   let dist: string;
@@ -61,14 +67,58 @@ describe('theme packs', () => {
     });
     expect(loadThemeManifest(dist, 'farm')).toEqual({
       productsByArea: { 'Hen house': 'EGG_BASKET' },
+      roleAreas: {},
     });
   });
 
   it('treats a missing or malformed theme.json as a theme without products', () => {
     addTheme('farm', { manifest: '{ not json' });
     addTheme('plain');
-    expect(loadThemeManifest(dist, 'farm')).toEqual({ productsByArea: {} });
-    expect(loadThemeManifest(dist, 'plain')).toEqual({ productsByArea: {} });
-    expect(loadThemeManifest(dist, 'office')).toEqual({ productsByArea: {} });
+    const none = { productsByArea: {}, roleAreas: {} };
+    expect(loadThemeManifest(dist, 'farm')).toEqual(none);
+    expect(loadThemeManifest(dist, 'plain')).toEqual(none);
+    expect(loadThemeManifest(dist, 'office')).toEqual(none);
+  });
+
+  it('reads team roles: teammate names (case-folded) to Areas, and the lead Area', () => {
+    addTheme('farm', {
+      manifest: JSON.stringify({
+        leadArea: 'Farmhouse',
+        roleAreas: { Hens: 'Hen house', cows: 'Cow barn', bad: 3 },
+      }),
+    });
+    expect(loadThemeManifest(dist, 'farm')).toEqual({
+      productsByArea: {},
+      roleAreas: { hens: 'Hen house', cows: 'Cow barn' },
+      leadArea: 'Farmhouse',
+    });
+  });
+
+  it('builds the simulated crew from the roles and the simulation section', () => {
+    addTheme('farm', {
+      manifest: JSON.stringify({
+        roleAreas: { Hens: 'Hen house', cows: 'Cow barn' },
+        simulation: {
+          teamName: 'farm-team',
+          leadName: 'Manager',
+          chores: { manager: ['Planning the day'], HENS: ['Collecting eggs', 7], cows: [] },
+        },
+      }),
+    });
+    expect(loadThemeCrew(dist, 'farm')).toEqual({
+      teamName: 'farm-team',
+      leadName: 'manager',
+      members: ['hens', 'cows'],
+      chores: { manager: ['Planning the day'], hens: ['Collecting eggs'] },
+    });
+  });
+
+  it('gives themes without roles a generic five-person crew', () => {
+    addTheme('plain');
+    for (const theme of ['plain', 'office']) {
+      const crew = loadThemeCrew(dist, theme);
+      expect(crew.members).toHaveLength(5);
+      expect(crew.chores).toEqual({});
+    }
   });
 });

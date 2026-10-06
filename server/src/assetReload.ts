@@ -117,7 +117,7 @@ export async function buildAssetCache(
     theme: {
       theme: themeDir ? theme : DEFAULT_THEME,
       themes: listThemes(distRoot),
-      productsByArea: loadThemeManifest(distRoot, theme).productsByArea,
+      ...loadThemeManifest(distRoot, theme),
     },
   };
 }

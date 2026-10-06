@@ -26,12 +26,13 @@ import {
   readConfig,
 } from './configPersistence.js';
 import { MAX_PORT, MIN_PORT } from './constants.js';
+import { FarmSimulator } from './farmSimulator.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import { setLayoutTheme } from './layoutPersistence.js';
 import { ProduceInventory } from './produceInventory.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
-import { resolveTheme } from './theme.js';
+import { loadThemeCrew, resolveTheme } from './theme.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
@@ -40,6 +41,8 @@ export interface CliArgs {
    *  can run at once without a collision. --port picks a fixed one. */
   port?: number;
   host: string;
+  /** Play a simulated team instead of watching real Claude sessions (demo mode). */
+  simulate?: boolean;
 }
 
 /** Thrown by parseArgs on an invalid --port. Kept separate from process.exit so
@@ -68,12 +71,15 @@ export function parseArgs(argv: string[]): CliArgs {
     } else if (argv[i] === '--host' && argv[i + 1]) {
       args.host = argv[i + 1];
       i++;
+    } else if (argv[i] === '--simulate') {
+      args.simulate = true;
     } else if (argv[i] === '--help') {
       console.log(`Usage: pixel-agents [options]
 
 Options:
   --port, -p <number>   Port to listen on (default: OS-assigned ephemeral port)
   --host <string>       Host to bind to (default: 127.0.0.1)
+  --simulate            Demo mode: a simulated team works instead of real Claude sessions
   --help                Show this help message`);
       process.exit(0);
     }
@@ -153,10 +159,19 @@ async function main(): Promise<void> {
     // Create runtime first (before server.start, so we can pass it in)
     const runtime = new AgentRuntime(store, claudeProvider);
 
-    // Wire hook events: HTTP POST -> runtime -> hookEventHandler -> agents
-    server.onHookEvent((providerId, event) => {
-      runtime.handleHookEvent(providerId, event);
-    });
+    // Wire hook events: HTTP POST -> runtime -> hookEventHandler -> agents.
+    // In demo mode real sessions are ignored: the simulated team is the office.
+    if (!args.simulate) {
+      server.onHookEvent((providerId, event) => {
+        runtime.handleHookEvent(providerId, event);
+      });
+    }
+    let simulator: FarmSimulator | null = null;
+    const startSimulator = (): void => {
+      simulator?.stop();
+      simulator = new FarmSimulator(store, loadThemeCrew(distRoot, activeTheme));
+      simulator.start();
+    };
 
     // onSetHooksEnabled side effect: install/uninstall the named provider's
     // hooks when the user toggles in the UI (or answers the consent ask).
@@ -253,6 +268,8 @@ async function main(): Promise<void> {
           );
           for (const message of themeSwitchMessages(assetCache)) store.broadcast(message);
           console.log(`[Pixel Agents] Theme switched to ${theme}`);
+          // The new theme may have a different crew (roles, chores).
+          if (args.simulate) startSimulator();
         })
         .catch((err: unknown) => {
           console.error('[Pixel Agents] Theme switch failed:', err);
@@ -262,7 +279,8 @@ async function main(): Promise<void> {
 
     const config = await server.start({
       store,
-      runtime,
+      // No runtime in demo mode: nothing restores or adopts real sessions.
+      runtime: args.simulate ? undefined : runtime,
       embedded: false,
       host: args.host,
       port: args.port,
@@ -283,7 +301,10 @@ async function main(): Promise<void> {
 
     // Install hooks on startup if the persisted setting says so — gated on the
     // one-time consent to modify ~/.claude/settings.json.
-    if (runtime.hooksEnabled.current) {
+    if (args.simulate) {
+      console.log('[Pixel Agents] Demo mode: a simulated team is working (real sessions ignored).');
+      startSimulator();
+    } else if (runtime.hooksEnabled.current) {
       let consent = getHooksConsent(claudeProvider.id) === 'granted';
       if (!consent && (await claudeProvider.areHooksInstalled())) {
         // Our hooks are already installed and already firing — a pre-consent
@@ -320,7 +341,7 @@ async function main(): Promise<void> {
     // Start scanning for external sessions (Claude running in user's terminal)
     const cwd = process.cwd();
     const dirs = claudeProvider.getSessionDirs?.(cwd);
-    if (dirs && dirs[0]) {
+    if (!args.simulate && dirs && dirs[0]) {
       const projectDir = dirs[0];
       console.log(`[Pixel Agents] Scanning project dir: ${projectDir}`);
       runtime.startProjectScan(projectDir);
