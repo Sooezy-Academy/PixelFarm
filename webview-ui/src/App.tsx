@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { toMajorMinor } from './changelogData.js';
+import { AgentChat } from './components/AgentChat.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { CoinPanel } from './components/CoinPanel.js';
@@ -103,6 +104,9 @@ function App() {
     themeProducts,
     inventory,
     themePrices,
+    chatStatus,
+    chatLog,
+    chatTyping,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Show migration notice once layout reset is detected
@@ -517,6 +521,17 @@ function App() {
           </p>
         </div>
       </Modal>
+
+      {/* AgentChat: only where the host sent chatStatus (it can reach an LLM). */}
+      {chatStatus && !editor.isEditMode && (
+        <AgentChat
+          getOfficeState={getOfficeState}
+          agentIds={agents}
+          status={chatStatus}
+          log={chatLog}
+          typing={chatTyping}
+        />
+      )}
 
       {/* The account: everything collected, sold at the theme's prices. */}
       {Object.keys(themePrices).length > 0 && (

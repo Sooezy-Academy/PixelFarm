@@ -39,6 +39,11 @@ export class FarmSimulator {
     this.simulation.start();
   }
 
+  /** Have a simulated agent work on `status` next (it agreed to it in chat). */
+  assignChore(id: number, status: string): boolean {
+    return this.simulation.assignChore(id, status);
+  }
+
   stop(): void {
     this.simulation.stop();
     for (const id of this.ids) this.store.delete(id);

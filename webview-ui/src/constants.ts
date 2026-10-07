@@ -324,3 +324,11 @@ export const MAX_PET_ID_LENGTH = 128;
 // ── Static demo (serverless build) ───────────────────────────
 /** Browser storage key for the demo's produce tally (per viewer, best effort). */
 export const STATIC_DEMO_INVENTORY_STORAGE_KEY = 'pixel-agents.static-demo.inventory';
+
+// ── AgentChat ────────────────────────────────────────────────
+/** Chat lines kept in the window (older ones scroll away for good). */
+export const CHAT_LOG_MAX_LINES = 200;
+/** Agent icon size in the chat (a 16×16 head crop at this zoom). */
+export const CHAT_AVATAR_ZOOM = 2;
+/** How often the chat refreshes its agent list (names/roles arrive imperatively). */
+export const CHAT_ROSTER_REFRESH_MS = 1000;

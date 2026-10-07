@@ -10,6 +10,8 @@
 
 import * as path from 'path';
 
+import { DEFAULT_OLLAMA_MODEL } from '../../core/src/constants.js';
+import { AgentChatService } from './agentChatService.js';
 import { AgentRuntime } from './agentRuntime.js';
 import { AgentStateStore } from './agentStateStore.js';
 import { buildAssetCache } from './assetReload.js';
@@ -290,6 +292,16 @@ async function main(): Promise<void> {
       onReloadAssets,
       onSetTheme,
       inventory: new ProduceInventory(store),
+      // AgentChat answers through Ollama Cloud with the operator's key, which
+      // stays in this process (never sent to a client).
+      chat: new AgentChatService(store, {
+        apiKey: process.env.OLLAMA_API_KEY,
+        model: process.env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL,
+        theme: () => assetCache.theme,
+        onAction: (agentId, action) => {
+          simulator?.assignChore(agentId, action);
+        },
+      }),
     });
     currentConfig = { port: config.port, token: config.token };
 
@@ -301,6 +313,11 @@ async function main(): Promise<void> {
 
     // Install hooks on startup if the persisted setting says so — gated on the
     // one-time consent to modify ~/.claude/settings.json.
+    console.log(
+      process.env.OLLAMA_API_KEY
+        ? `[Pixel Agents] AgentChat: on (${process.env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL})`
+        : '[Pixel Agents] AgentChat: off — set OLLAMA_API_KEY to chat with agents',
+    );
     if (args.simulate) {
       console.log('[Pixel Agents] Demo mode: a simulated team is working (real sessions ignored).');
       startSimulator();

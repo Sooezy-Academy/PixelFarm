@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { DEFAULT_THEME } from '../../../core/src/constants.js';
 import type { HooksConsentRequest } from '../../../core/src/messages.js';
+import { CHAT_LOG_MAX_LINES } from '../constants.js';
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
 import { reconcileExistingAgents } from '../office/engine/existingAgents.js';
@@ -122,6 +123,27 @@ interface ExtensionMessageState {
   inventory: Record<string, number>;
   /** Product type → sale price in bronze coins (themeLoaded.prices). */
   themePrices: Record<string, number>;
+  // AgentChat
+  /** null until the server says whether chat is available (no chatStatus = no chat UI). */
+  chatStatus: ChatStatusInfo | null;
+  chatLog: ChatLogLine[];
+  /** Agents composing a reply right now. */
+  chatTyping: number[];
+}
+
+export interface ChatStatusInfo {
+  available: boolean;
+  model?: string;
+  reason?: string;
+}
+
+export interface ChatLogLine {
+  messageId: string;
+  fromAgentId?: number;
+  fromName: string;
+  toAgentIds: number[];
+  text: string;
+  at: number;
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -170,6 +192,9 @@ export function useExtensionMessages(
   const [themeProducts, setThemeProducts] = useState<string[]>([]);
   const [inventory, setInventory] = useState<Record<string, number>>({});
   const [themePrices, setThemePrices] = useState<Record<string, number>>({});
+  const [chatStatus, setChatStatus] = useState<ChatStatusInfo | null>(null);
+  const [chatLog, setChatLog] = useState<ChatLogLine[]>([]);
+  const [chatTyping, setChatTyping] = useState<number[]>([]);
 
   // The renderer keeps its own module-level copy (read every rAF frame), so both
   // sources of truth move together — the persisted value on settingsLoaded and
@@ -689,6 +714,31 @@ export function useExtensionMessages(
             ? (msg.prices as Record<string, number>)
             : {},
         );
+      } else if (msg.type === 'chatStatus') {
+        setChatStatus({
+          available: msg.available === true,
+          model: typeof msg.model === 'string' ? msg.model : undefined,
+          reason: typeof msg.reason === 'string' ? msg.reason : undefined,
+        });
+      } else if (msg.type === 'chatMessage') {
+        const line: ChatLogLine = {
+          messageId: String(msg.messageId),
+          fromAgentId: typeof msg.fromAgentId === 'number' ? msg.fromAgentId : undefined,
+          fromName: String(msg.fromName),
+          toAgentIds: Array.isArray(msg.toAgentIds) ? (msg.toAgentIds as number[]) : [],
+          text: String(msg.text),
+          at: typeof msg.at === 'number' ? msg.at : Date.now(),
+        };
+        setChatLog((prev) => [...prev, line].slice(-CHAT_LOG_MAX_LINES));
+      } else if (msg.type === 'chatTyping') {
+        const id = msg.id as number;
+        setChatTyping((prev) =>
+          msg.typing === true
+            ? prev.includes(id)
+              ? prev
+              : [...prev, id]
+            : prev.filter((t) => t !== id),
+        );
       } else if (msg.type === 'inventoryLoaded') {
         if (msg.counts && typeof msg.counts === 'object') {
           setInventory(msg.counts as Record<string, number>);
@@ -853,6 +903,9 @@ export function useExtensionMessages(
     themeProducts,
     inventory,
     themePrices,
+    chatStatus,
+    chatLog,
+    chatTyping,
     setAreaMappings,
     showAreas,
     setShowAreas,

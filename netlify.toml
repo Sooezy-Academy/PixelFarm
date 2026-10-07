@@ -9,3 +9,9 @@
   publish = "dist/webview"
   # Dependabot branches get no deploy previews (exit code 0 = skip the build).
   ignore = "echo \"$BRANCH\" | grep -q '^dependabot/'"
+
+# AgentChat on the static site: the function holds OLLAMA_API_KEY (a site
+# environment variable you set in the Netlify UI) and builds the prompts.
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

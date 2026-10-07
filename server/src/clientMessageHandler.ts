@@ -1,5 +1,6 @@
 import type { HookProvider } from '../../core/src/provider.js';
 import { resendAgentActivity } from './agentActivityResend.js';
+import type { AgentChatService } from './agentChatService.js';
 import { buildAgentDiagnostics } from './agentDiagnostics.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
@@ -78,6 +79,8 @@ export interface ClientMessageContext {
   onSetTheme?: SetThemeSideEffect;
   /** Produce tally; absent = collectProduct is ignored. */
   inventory?: ProduceInventory;
+  /** AgentChat; absent = no chatStatus is sent and the client hides the chat. */
+  chat?: AgentChatService;
   /**
    * Whether this client may send messages that reach OUTSIDE `~/.pixel-agents/`
    * — today only `setHooksEnabled`, which grants machine-wide consent to modify
@@ -302,6 +305,20 @@ export function handleClientMessage(
       }
       break;
 
+    case 'chatSend': {
+      // Privilege: every message spends the operator's LLM quota, so only the
+      // tokened client the CLI handed out may chat (same rule as setHooksEnabled).
+      if (!ctx.privileged) {
+        console.warn('[Pixel Agents] Ignoring chatSend from an untokened client.');
+        break;
+      }
+      const ids = Array.isArray(msg.toAgentIds)
+        ? msg.toAgentIds.filter((id): id is number => typeof id === 'number')
+        : [];
+      if (typeof msg.text === 'string') void ctx.chat?.send(msg.text, ids);
+      break;
+    }
+
     case 'collectProduct': {
       const counts = ctx.inventory?.collect(
         msg.id,
@@ -482,6 +499,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // when characters appear).
   send(themeLoadedMessage(cache));
   send({ type: 'inventoryLoaded', counts: readInventory() });
+  for (const message of ctx.chat?.handshakeMessages() ?? []) send(message);
 
   // 4b. Folder→Area mappings (must arrive before existingAgents so the
   // webview seat-preference logic has the dict when characters are created).

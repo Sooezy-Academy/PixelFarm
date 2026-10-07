@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import type { AgentChatService } from './agentChatService.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type {
@@ -73,6 +74,7 @@ export class PixelAgentsServer {
     onReloadAssets?: ReloadAssetsSideEffect;
     onSetTheme?: SetThemeSideEffect;
     inventory?: ProduceInventory;
+    chat?: AgentChatService;
   }): Promise<ServerConfig> {
     const embedded = options?.embedded ?? true;
     const wantsSpa = !embedded;
@@ -112,6 +114,7 @@ export class PixelAgentsServer {
       onReloadAssets: options?.onReloadAssets,
       onSetTheme: options?.onSetTheme,
       inventory: options?.inventory,
+      chat: options?.chat,
     });
 
     this.app = app;

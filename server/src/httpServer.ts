@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import Fastify from 'fastify';
 
+import type { AgentChatService } from './agentChatService.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type {
@@ -51,6 +52,8 @@ export interface HttpServerOptions {
   onSetTheme?: SetThemeSideEffect;
   /** Produce tally behind collectProduct / inventoryLoaded. */
   inventory?: ProduceInventory;
+  /** AgentChat behind chatSend / chatStatus. */
+  chat?: AgentChatService;
 }
 
 /** Result of createHttpServer(). */
@@ -218,6 +221,7 @@ function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions
           onReloadAssets: options.onReloadAssets,
           onSetTheme: options.onSetTheme,
           inventory: options.inventory,
+          chat: options.chat,
           privileged,
         });
       } catch {

@@ -39,6 +39,9 @@ export type ServerMessage =
   | AreaMappingsLoaded
   | ThemeLoaded
   | InventoryLoaded
+  | ChatStatus
+  | ChatMessage
+  | ChatTyping
   | WorkspaceFolders
   | AgentDiagnostics;
 
@@ -66,6 +69,7 @@ export type ClientMessage =
   | SetShowAreas
   | SetTheme
   | CollectProduct
+  | ChatSend
   | RequestDiagnostics;
 
 export interface ProviderCapabilities {
@@ -319,6 +323,29 @@ export interface InventoryLoaded {
   counts: Record<string, number>;
 }
 
+export interface ChatStatus {
+  type: 'chatStatus';
+  available: boolean;
+  model?: string;
+  reason?: string;
+}
+
+export interface ChatMessage {
+  type: 'chatMessage';
+  messageId: string;
+  fromAgentId?: number;
+  fromName: string;
+  toAgentIds: number[];
+  text: string;
+  at: number;
+}
+
+export interface ChatTyping {
+  type: 'chatTyping';
+  id: number;
+  typing: boolean;
+}
+
 export interface WorkspaceFolders {
   type: 'workspaceFolders';
   folders: WorkspaceFolder[];
@@ -454,6 +481,12 @@ export interface CollectProduct {
   type: 'collectProduct';
   id: number;
   product: string;
+}
+
+export interface ChatSend {
+  type: 'chatSend';
+  toAgentIds: number[];
+  text: string;
 }
 
 export interface RequestDiagnostics {

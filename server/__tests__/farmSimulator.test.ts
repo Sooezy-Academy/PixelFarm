@@ -96,4 +96,23 @@ describe('FarmSimulator', () => {
     store.persist();
     expect(saved).toEqual([]);
   });
+
+  it('a chore assigned from chat gets a resting worker up and is done next', () => {
+    sim.start();
+    vi.advanceTimersByTime(60_000);
+    const hens = SIM_FIRST_AGENT_ID + 1;
+    // Wait until hens is resting between turns.
+    const lastStatus = () =>
+      broadcasts.filter((m) => m.id === hens && m.type === 'agentStatus').at(-1)?.status;
+    for (let i = 0; i < 200 && lastStatus() !== 'waiting'; i++) vi.advanceTimersByTime(250);
+    expect(lastStatus()).toBe('waiting');
+    const before = broadcasts.length;
+
+    expect(sim.assignChore(hens, 'Scrubbing the nest boxes')).toBe(true);
+
+    const after = broadcasts.slice(before).filter((m) => m.id === hens);
+    expect(after[0]).toMatchObject({ type: 'agentStatus', status: 'active' });
+    expect(after[1]).toMatchObject({ type: 'agentToolStart', status: 'Scrubbing the nest boxes' });
+    expect(sim.assignChore(123, 'nobody')).toBe(false);
+  });
 });

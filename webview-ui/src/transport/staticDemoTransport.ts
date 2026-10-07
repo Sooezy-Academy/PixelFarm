@@ -1,4 +1,7 @@
+import type { ChatAgentProfile, ChatLine } from '../../../core/src/agentChat.js';
+import { AgentChatRoom, chatHandles, describeRole } from '../../../core/src/agentChat.js';
 import {
+  STATIC_DEMO_CHAT_ENDPOINT,
   STATIC_DEMO_SNAPSHOT_FILE,
   TRANSPORT_STATE_CONNECTED,
 } from '../../../core/src/constants.js';
@@ -14,6 +17,15 @@ interface DemoSnapshot {
   crew: SimulatedCrew;
   /** The handshake a server would send, in order. */
   messages: Array<Record<string, unknown>>;
+}
+
+/** What the page knows about each simulated agent, for chat personas. */
+interface DemoAgent {
+  id: number;
+  name?: string;
+  isLead: boolean;
+  activity?: string;
+  waiting: boolean;
 }
 
 function readStoredInventory(): Record<string, number> {
@@ -46,7 +58,9 @@ function storeInventory(counts: Record<string, number>): void {
  * build-time snapshot (assets, theme, layout), then runs the same
  * CrewSimulation the server's `--simulate` mode runs, and answers
  * `collectProduct` with the same once-per-finished-turn rule as the server's
- * ProduceInventory — the tally kept in this browser's storage.
+ * ProduceInventory — the tally kept in this browser's storage. AgentChat runs
+ * the same AgentChatRoom the server does; only the LLM call differs — it goes
+ * to the site's Netlify Function, which holds the key and builds the prompt.
  */
 export class StaticDemoTransport implements MessageTransport {
   readonly state: TransportState = TRANSPORT_STATE_CONNECTED;
@@ -61,6 +75,9 @@ export class StaticDemoTransport implements MessageTransport {
   private readonly uncollected = new Set<number>();
 
   private readonly baseUrl: string;
+  private readonly agents = new Map<number, DemoAgent>();
+  private theme: { roleAreas?: Record<string, string>; leadArea?: string } = {};
+  private chat: AgentChatRoom | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -72,6 +89,11 @@ export class StaticDemoTransport implements MessageTransport {
       void this.start();
     } else if (msg.type === 'collectProduct') {
       this.collect(msg.id, msg.product);
+    } else if (msg.type === 'chatSend' && typeof msg.text === 'string') {
+      const ids = Array.isArray(msg.toAgentIds)
+        ? msg.toAgentIds.filter((id): id is number => typeof id === 'number')
+        : [];
+      void this.chat?.send(msg.text, ids);
     }
     // Everything else (settings, layout edits, theme switches) has no server to
     // reach; the page keeps its own state for this visit.
@@ -111,6 +133,10 @@ export class StaticDemoTransport implements MessageTransport {
     for (const message of snapshot.messages) {
       this.deliver(message);
       if (message.type === 'themeLoaded') {
+        this.theme = {
+          roleAreas: (message.roleAreas ?? {}) as Record<string, string>,
+          leadArea: typeof message.leadArea === 'string' ? message.leadArea : undefined,
+        };
         const productsByArea = (message.productsByArea ?? {}) as Record<string, string>;
         this.products = [...new Set(Object.values(productsByArea))];
         this.deliver({ type: 'inventoryLoaded', counts: this.inventory });
@@ -118,8 +144,12 @@ export class StaticDemoTransport implements MessageTransport {
     }
 
     this.simulation = new CrewSimulation(snapshot.crew, {
-      spawn: ({ id }) => this.deliver({ type: 'agentCreated', id, folderName: snapshot.theme }),
+      spawn: ({ id }) => {
+        this.agents.set(id, { id, isLead: false, waiting: false });
+        this.deliver({ type: 'agentCreated', id, folderName: snapshot.theme });
+      },
       message: (message) => {
+        this.track(message);
         if (message.type === 'agentStatus' && typeof message.id === 'number') {
           if (message.status === 'waiting' && message.awaitingInput !== true) {
             this.uncollected.add(message.id);
@@ -131,6 +161,77 @@ export class StaticDemoTransport implements MessageTransport {
       },
     });
     this.simulation.start();
+    void this.startChat();
+  }
+
+  /** Mirror simulation messages into what chat personas need (name, lead, activity). */
+  private track(message: Record<string, unknown>): void {
+    const agent = typeof message.id === 'number' ? this.agents.get(message.id) : undefined;
+    if (!agent) return;
+    if (message.type === 'agentTeamInfo') {
+      agent.name = typeof message.agentName === 'string' ? message.agentName : agent.name;
+      agent.isLead = message.isTeamLead === true;
+    } else if (message.type === 'agentToolStart' && typeof message.status === 'string') {
+      agent.activity = message.status;
+    } else if (message.type === 'agentStatus') {
+      agent.waiting = message.status === 'waiting';
+      if (agent.waiting) agent.activity = undefined;
+    }
+  }
+
+  private profiles(): ChatAgentProfile[] {
+    const agents = [...this.agents.values()];
+    const handles = chatHandles(agents.map((a) => ({ id: a.id, agentName: a.name })));
+    return agents.map((a) => {
+      const handle = handles.get(a.id) ?? `agent-${a.id.toString()}`;
+      return {
+        id: a.id,
+        handle,
+        isLead: a.isLead,
+        role: describeRole({ handle, isLead: a.isLead }, this.theme),
+        activity: a.activity ?? (a.waiting ? 'just finished a task' : 'between tasks'),
+      };
+    });
+  }
+
+  /** Ask the site's chat function whether chat is set up, then open the room. */
+  private async startChat(): Promise<void> {
+    const endpoint = STATIC_DEMO_CHAT_ENDPOINT;
+    let status: { available?: boolean; model?: string } = {};
+    try {
+      const res = await fetch(endpoint);
+      if (res.ok) status = (await res.json()) as typeof status;
+    } catch {
+      // No function deployed (e.g. a plain static server): chat stays offline.
+    }
+    if (!status.available) {
+      this.deliver({
+        type: 'chatStatus',
+        available: false,
+        reason: "Chat isn't set up on this site yet.",
+      });
+      return;
+    }
+    this.chat = new AgentChatRoom({
+      profiles: () => this.profiles(),
+      complete: async (agent, team, history: ChatLine[], message: ChatLine) => {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent, team, history, message }),
+        });
+        if (res.status === 429) throw new Error('too many messages, wait a minute');
+        if (!res.ok) throw new Error(`chat service HTTP ${res.status.toString()}`);
+        const body = (await res.json()) as { reply?: unknown };
+        if (typeof body.reply !== 'string') throw new Error('empty reply');
+        return body.reply;
+      },
+      emit: (message) => this.deliver(message),
+      onAction: (agentId, action) => {
+        this.simulation?.assignChore(agentId, action);
+      },
+    });
+    this.deliver({ type: 'chatStatus', available: true, model: status.model });
   }
 
   private collect(agentId: unknown, product: unknown): void {

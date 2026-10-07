@@ -10,7 +10,11 @@ import assert from 'node:assert/strict';
 
 import { afterEach, beforeEach, test, vi } from 'vitest';
 
-import { SIM_FIRST_AGENT_ID, SIM_SPAWN_STAGGER_MS } from '../../core/src/constants.js';
+import {
+  SIM_FIRST_AGENT_ID,
+  SIM_SPAWN_STAGGER_MS,
+  STATIC_DEMO_CHAT_ENDPOINT,
+} from '../../core/src/constants.js';
 import { StaticDemoTransport } from '../src/transport/staticDemoTransport.js';
 
 const SNAPSHOT = {
@@ -97,4 +101,59 @@ test('logs and stops when the snapshot is missing', async () => {
   assert.equal(received.length, 0);
   assert.equal(error.mock.calls.length, 1);
   error.mockRestore();
+});
+
+/** fetch for the static site: the snapshot, plus the chat function (or none). */
+function stubSite(chat: 'online' | 'offline') {
+  const posts: Array<Record<string, unknown>> = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (!url.endsWith(STATIC_DEMO_CHAT_ENDPOINT)) {
+        return { ok: true, status: 200, json: async () => SNAPSHOT };
+      }
+      if (chat === 'offline') return { ok: false, status: 404, json: async () => ({}) };
+      if (init?.method === 'POST') {
+        posts.push(JSON.parse(init.body as string) as Record<string, unknown>);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ reply: 'Cluck! ACTION: Feeding the hens' }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ available: true, model: 'gpt-oss:20b' }),
+      };
+    }),
+  );
+  return posts;
+}
+
+test('chat stays offline (with a reason) when the site has no chat function', async () => {
+  stubSite('offline');
+  await connect();
+  await vi.advanceTimersByTimeAsync(0);
+  const status = received.find((m) => m.type === 'chatStatus');
+  assert.equal(status?.available, false);
+  assert.ok(typeof status?.reason === 'string');
+});
+
+test('chats through the site function with structured fields, never a raw prompt', async () => {
+  const posts = stubSite('online');
+  await connect();
+  await vi.advanceTimersByTimeAsync(2 * SIM_SPAWN_STAGGER_MS);
+  assert.equal(received.find((m) => m.type === 'chatStatus')?.available, true);
+
+  transport.send({ type: 'chatSend', toAgentIds: [], text: '@hens hungry?' } as never);
+  await vi.advanceTimersByTimeAsync(0);
+
+  assert.equal(posts.length, 1);
+  assert.deepEqual(Object.keys(posts[0]).sort(), ['agent', 'history', 'message', 'team']);
+  assert.equal((posts[0].agent as { handle: string }).handle, 'hens');
+  const lines = received
+    .filter((m) => m.type === 'chatMessage')
+    .map((m) => `${String(m.fromName)}: ${String(m.text)}`);
+  assert.deepEqual(lines, ['you: @hens hungry?', 'hens: Cluck!']);
 });

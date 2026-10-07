@@ -53,6 +53,12 @@ export class CrewSimulation {
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
   private stepSeq = 0;
   private running = false;
+  /** Agent id → its crew name, once spawned. */
+  private readonly names = new Map<number, string>();
+  /** Chores asked for (from chat), done before the agent's own routine. */
+  private readonly assigned = new Map<number, string[]>();
+  /** The rest timer of each agent between turns, so an assignment can cut it short. */
+  private readonly resting = new Map<number, ReturnType<typeof setTimeout>>();
 
   private readonly crew: SimulatedCrew;
   private readonly host: CrewSimulationHost;
@@ -72,6 +78,7 @@ export class CrewSimulation {
       this.later(i * SIM_SPAWN_STAGGER_MS, () => {
         const id = leadId + i;
         const leadAgentId = i === 0 ? undefined : leadId;
+        this.names.set(id, name);
         this.host.spawn({ id, name, leadAgentId });
         this.host.message({
           type: 'agentTeamInfo',
@@ -90,14 +97,35 @@ export class CrewSimulation {
     this.running = false;
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
+    this.resting.clear();
+    this.assigned.clear();
   }
 
-  private later(ms: number, fn: () => void): void {
+  /**
+   * Have an agent work on `status` next (it took the task on in chat). A
+   * resting agent gets up and starts right away; a busy one does it as its next
+   * step. Returns false for an id this simulation doesn't play.
+   */
+  assignChore(id: number, status: string): boolean {
+    const name = this.names.get(id);
+    if (!this.running || name === undefined) return false;
+    this.assigned.set(id, [...(this.assigned.get(id) ?? []), status]);
+    const rest = this.resting.get(id);
+    if (rest !== undefined) {
+      clearTimeout(rest);
+      this.timers.delete(rest);
+      this.startTurn(id, name);
+    }
+    return true;
+  }
+
+  private later(ms: number, fn: () => void): ReturnType<typeof setTimeout> {
     const t = setTimeout(() => {
       this.timers.delete(t);
       if (this.running) fn();
     }, ms);
     this.timers.add(t);
+    return t;
   }
 
   private between(min: number, range: number): number {
@@ -105,6 +133,7 @@ export class CrewSimulation {
   }
 
   private startTurn(id: number, name: string): void {
+    this.resting.delete(id);
     this.host.message({ type: 'agentStatus', id, status: 'active' });
     this.step(id, name, this.between(SIM_STEPS_MIN, SIM_STEPS_RANGE + 1));
   }
@@ -115,7 +144,8 @@ export class CrewSimulation {
       return;
     }
     const chores = this.crew.chores[name] ?? FALLBACK_CHORES;
-    const status = chores[Math.floor(this.random() * chores.length)];
+    const status =
+      this.assigned.get(id)?.shift() ?? chores[Math.floor(this.random() * chores.length)];
     const toolName = READING_CHORE.test(status) ? 'Read' : 'Write';
     const toolId = `sim-${id}-${++this.stepSeq}`;
     this.host.message({ type: 'agentToolStart', id, toolId, status, toolName });
@@ -129,6 +159,9 @@ export class CrewSimulation {
     this.host.message({ type: 'agentToolsClear', id });
     // A finished turn ("Done"), so the theme drops this member's product.
     this.host.message({ type: 'agentStatus', id, status: 'waiting', awaitingInput: false });
-    this.later(this.between(SIM_IDLE_MIN_MS, SIM_IDLE_RANGE_MS), () => this.startTurn(id, name));
+    this.resting.set(
+      id,
+      this.later(this.between(SIM_IDLE_MIN_MS, SIM_IDLE_RANGE_MS), () => this.startTurn(id, name)),
+    );
   }
 }

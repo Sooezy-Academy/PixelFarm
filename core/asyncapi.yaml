@@ -117,6 +117,10 @@ components:
         - $ref: '#/components/schemas/AreaMappingsLoaded'
         - $ref: '#/components/schemas/ThemeLoaded'
         - $ref: '#/components/schemas/InventoryLoaded'
+        # AgentChat
+        - $ref: '#/components/schemas/ChatStatus'
+        - $ref: '#/components/schemas/ChatMessage'
+        - $ref: '#/components/schemas/ChatTyping'
         - $ref: '#/components/schemas/WorkspaceFolders'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
@@ -147,6 +151,7 @@ components:
         - $ref: '#/components/schemas/SetShowAreas'
         - $ref: '#/components/schemas/SetTheme'
         - $ref: '#/components/schemas/CollectProduct'
+        - $ref: '#/components/schemas/ChatSend'
         - $ref: '#/components/schemas/RequestDiagnostics'
       discriminator: type
 
@@ -815,6 +820,68 @@ components:
           additionalProperties:
             type: integer
 
+    ChatStatus:
+      description: |
+        Whether AgentChat can answer here. Sent during the `webviewReady`
+        handshake; a client that never receives it hides the chat. Unavailable
+        when no LLM key is configured (the server reads OLLAMA_API_KEY).
+      type: object
+      additionalProperties: false
+      required: [type, available]
+      properties:
+        type:
+          const: chatStatus
+        available:
+          type: boolean
+        model:
+          type: string
+          description: The LLM the agents answer with.
+        reason:
+          type: string
+          description: Why chat is unavailable, for the UI.
+
+    ChatMessage:
+      description: |
+        One line in the AgentChat room, broadcast to every client: the user's
+        message, an agent's reply, or a system note. An agent's reply that
+        @mentions teammates lists them in `toAgentIds` (it handed them work).
+      type: object
+      additionalProperties: false
+      required: [type, messageId, fromName, toAgentIds, text, at]
+      properties:
+        type:
+          const: chatMessage
+        messageId:
+          type: string
+        fromAgentId:
+          type: integer
+          description: The replying agent; absent for the user and for system notes.
+        fromName:
+          type: string
+          description: '"you", "system", or the agent''s @handle.'
+        toAgentIds:
+          type: array
+          items:
+            type: integer
+        text:
+          type: string
+        at:
+          type: integer
+          description: Epoch milliseconds.
+
+    ChatTyping:
+      description: An agent started (or stopped) composing a chat reply.
+      type: object
+      additionalProperties: false
+      required: [type, id, typing]
+      properties:
+        type:
+          const: chatTyping
+        id:
+          type: integer
+        typing:
+          type: boolean
+
     ExternalAssetDirectoriesUpdated:
       description: External asset directory list changed (after add/remove).
       type: object
@@ -1157,6 +1224,24 @@ components:
         product:
           type: string
           description: Furniture type id of the product (a value of `themeLoaded.productsByArea`).
+
+    ChatSend:
+      description: |
+        The user's AgentChat message. Recipients are the agents picked in the
+        UI plus every @handle in the text (@all = everyone). Needs a privileged
+        connection in standalone: it spends the operator's LLM quota.
+      type: object
+      additionalProperties: false
+      required: [type, toAgentIds, text]
+      properties:
+        type:
+          const: chatSend
+        toAgentIds:
+          type: array
+          items:
+            type: integer
+        text:
+          type: string
 
     RequestDiagnostics:
       description: Request agent connection diagnostics (server responds with agentDiagnostics).

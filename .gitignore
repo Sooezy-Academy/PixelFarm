@@ -50,3 +50,5 @@ agent-orchestrator.yaml
 .ao/
 .serena/
 tasks/
+# Local secrets (API keys) — never commit
+GT/
